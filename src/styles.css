@@ -348,18 +348,6 @@ h1, h2, h3, h4 { font-family: var(--ff-display); font-weight: 700; line-height: 
   background: linear-gradient(90deg, var(--purple), var(--blue), var(--green), var(--yellow));
 }
 
-/* Custom trailing cursor ring */
-.cursor-ring {
-  position: fixed; top: 0; left: 0; width: 32px; height: 32px; border: 2px solid var(--purple);
-  border-radius: 50%; pointer-events: none; z-index: 99; will-change: transform;
-  transition: width .22s ease, height .22s ease, background .22s ease, border-color .22s ease;
-}
-.cursor-ring.is-hover {
-  width: 56px; height: 56px; border-color: var(--yellow);
-  background: color-mix(in srgb, var(--yellow) 28%, transparent);
-}
-@media (pointer: coarse), (prefers-reduced-motion: reduce) { .cursor-ring { display: none; } }
-
 /* Magnetic / tilt elements get a smooth spring-back */
 [data-magnetic] { transition: transform .3s cubic-bezier(.2,.8,.2,1); }
 [data-tilt] { transition: transform .3s cubic-bezier(.2,.8,.2,1); transform-style: preserve-3d; }

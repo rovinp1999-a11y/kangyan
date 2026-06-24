@@ -1,11 +1,9 @@
-import { useEffect, useRef } from 'react'
+import { useEffect } from 'react'
 
-// Mounts once. Renders the scroll-progress bar + custom cursor ring, and wires
-// up all global pointer interactions. Everything heavy is gated behind a
-// fine-pointer + no-reduced-motion check so touch/accessibility users are unaffected.
+// Mounts once. Renders the scroll-progress bar and wires up all global pointer
+// interactions. Everything heavy is gated behind a fine-pointer + no-reduced-motion
+// check so touch/accessibility users are unaffected.
 export default function Effects() {
-  const ringRef = useRef(null)
-
   useEffect(() => {
     const fine = window.matchMedia('(pointer: fine)').matches
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -69,30 +67,6 @@ export default function Effects() {
     })
 
     if (fine && !reduce) {
-      /* ---- Trailing cursor ring ---- */
-      const ring = ringRef.current
-      let rx = window.innerWidth / 2
-      let ry = window.innerHeight / 2
-      let tx = rx
-      let ty = ry
-      let raf
-      const onMove = (e) => { tx = e.clientX; ty = e.clientY }
-      const loop = () => {
-        rx += (tx - rx) * 0.2
-        ry += (ty - ry) * 0.2
-        if (ring) ring.style.transform = `translate(${rx}px, ${ry}px) translate(-50%, -50%)`
-        raf = requestAnimationFrame(loop)
-      }
-      add(window, 'mousemove', onMove, { passive: true })
-      loop()
-      cleanups.push(() => cancelAnimationFrame(raf))
-
-      const onOver = (e) => {
-        const hot = e.target.closest('a, button, [data-tilt], input, textarea, select')
-        ring?.classList.toggle('is-hover', !!hot)
-      }
-      add(window, 'mouseover', onOver, { passive: true })
-
       /* ---- Magnetic elements ---- */
       document.querySelectorAll('[data-magnetic]').forEach((el) => {
         const onM = (e) => {
@@ -125,11 +99,8 @@ export default function Effects() {
   }, [])
 
   return (
-    <>
-      <div className="progress" aria-hidden="true">
-        <span id="progressBar" className="progress__bar"></span>
-      </div>
-      <div ref={ringRef} className="cursor-ring" aria-hidden="true"></div>
-    </>
+    <div className="progress" aria-hidden="true">
+      <span id="progressBar" className="progress__bar"></span>
+    </div>
   )
 }
