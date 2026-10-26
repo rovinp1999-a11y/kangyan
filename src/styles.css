@@ -246,7 +246,7 @@ h1, h2, h3, h4 { font-family: var(--ff-display); font-weight: 700; line-height: 
 
 /* ----------------------------- Contact ----------------------------- */
 .contact { background: var(--ink); color: var(--paper); }
-.contact__grid { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(32px, 5vw, 72px); align-items: center; }
+.contact__grid { display: grid; grid-template-columns: 1fr; }
 .contact__title { font-size: var(--fs-h1); line-height: .95; }
 .contact__title .outline-text { -webkit-text-stroke: 2px var(--paper); }
 .contact__text > p { color: rgba(246,244,238,.75); margin: 22px 0 30px; max-width: 42ch; }
@@ -254,18 +254,6 @@ h1, h2, h3, h4 { font-family: var(--ff-display); font-weight: 700; line-height: 
 .contact__details li { display: flex; align-items: center; gap: 14px; font-weight: 500; }
 .contact__details .ic { width: 22px; height: 22px; color: var(--yellow); flex: none; }
 .contact__details a:hover { color: var(--yellow); }
-
-.contact__form { background: var(--paper); color: var(--ink); border-radius: var(--radius-lg); padding: clamp(24px, 3vw, 40px); border: 3px solid var(--ink); box-shadow: 12px 12px 0 var(--yellow); }
-.field { margin-bottom: 16px; }
-.field--row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-.field label { display: block; font-size: .85rem; font-weight: 600; margin-bottom: 7px; }
-.field input, .field select, .field textarea {
-  width: 100%; padding: 13px 15px; border: 2px solid var(--ink); border-radius: 12px;
-  font-family: inherit; font-size: .98rem; color: var(--ink); background: var(--white); transition: box-shadow .2s;
-}
-.field input:focus, .field select:focus, .field textarea:focus { outline: 0; box-shadow: 4px 4px 0 var(--purple); }
-.field textarea { resize: vertical; }
-.form__note { margin-top: 14px; padding: 12px 15px; border-radius: 12px; font-size: .92rem; font-weight: 500; background: var(--green); color: var(--white); }
 
 /* ----------------------------- Footer ----------------------------- */
 .footer { background: var(--paper); border-top: 2px solid var(--ink); padding: clamp(48px, 6vw, 80px) 0 36px; }
@@ -324,12 +312,10 @@ h1, h2, h3, h4 { font-family: var(--ff-display); font-weight: 700; line-height: 
   .gallery__grid { grid-template-columns: repeat(2, 1fr); }
 
   .quotes { grid-template-columns: 1fr; }
-  .contact__grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 540px) {
   .about__list { grid-template-columns: 1fr; }
-  .field--row { grid-template-columns: 1fr; }
   .hero__photo { box-shadow: 9px 9px 0 var(--yellow); }
   .tile, .tile--f { grid-column: span 6 !important; }
   .gallery__grid { grid-template-columns: 1fr; }

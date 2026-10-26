@@ -1,50 +1,6 @@
-import { useState } from 'react'
 import Reveal from './Reveal.jsx'
-import { confettiBurst } from '../confetti.js'
-
-const EVENT_TYPES = [
-  'Wedding',
-  'Corporate Event',
-  'Gala / Awards',
-  'Product Launch',
-  'Concert / Show',
-  'Private Celebration',
-  'Other',
-]
-
-const EMPTY = { name: '', email: '', date: '', type: '', message: '' }
 
 export default function Contact() {
-  const [form, setForm] = useState(EMPTY)
-  const [note, setNote] = useState('')
-
-  const update = (e) => setForm((f) => ({ ...f, [e.target.name]: e.target.value }))
-
-  const handleSubmit = (e) => {
-    e.preventDefault()
-    if (!e.target.checkValidity()) {
-      e.target.reportValidity()
-      return
-    }
-
-    // 🎉 Celebrate the booking from the submit button's position.
-    const btn = e.target.querySelector('button[type="submit"]')
-    const r = btn.getBoundingClientRect()
-    confettiBurst(r.left + r.width / 2, r.top + r.height / 2)
-
-    const subject = encodeURIComponent(`Booking request — ${form.type || 'Event'} from ${form.name}`)
-    const body = encodeURIComponent(
-      `Name: ${form.name}\n` +
-        `Email: ${form.email}\n` +
-        `Event date: ${form.date || 'TBD'}\n` +
-        `Event type: ${form.type || 'Not specified'}\n\n` +
-        form.message,
-    )
-    window.location.href = `mailto:girlychangkangyan@gmail.com?subject=${subject}&body=${body}`
-    setNote(`Thanks, ${form.name || 'there'}! Your email app is opening — hit send and I’ll reply within 48 hours.`)
-    setForm(EMPTY)
-  }
-
   return (
     <section className="section contact" id="contact" data-spotlight>
       <div className="container contact__grid">
@@ -78,38 +34,6 @@ export default function Contact() {
               <a href="https://instagram.com/kangyan1204" target="_blank" rel="noopener noreferrer">@kangyan1204</a>
             </li>
           </ul>
-        </Reveal>
-
-        <Reveal as="form" className="contact__form" onSubmit={handleSubmit} noValidate>
-          <div className="field">
-            <label htmlFor="name">Your name</label>
-            <input id="name" name="name" type="text" placeholder="Jane Doe" value={form.name} onChange={update} required />
-          </div>
-          <div className="field field--row">
-            <div>
-              <label htmlFor="email">Email</label>
-              <input id="email" name="email" type="email" placeholder="jane@email.com" value={form.email} onChange={update} required />
-            </div>
-            <div>
-              <label htmlFor="date">Event date</label>
-              <input id="date" name="date" type="date" value={form.date} onChange={update} />
-            </div>
-          </div>
-          <div className="field">
-            <label htmlFor="type">Event type</label>
-            <select id="type" name="type" value={form.type} onChange={update}>
-              <option value="">Select…</option>
-              {EVENT_TYPES.map((t) => (
-                <option key={t}>{t}</option>
-              ))}
-            </select>
-          </div>
-          <div className="field">
-            <label htmlFor="message">Tell me about your event</label>
-            <textarea id="message" name="message" rows="4" placeholder="Date, location, guest count, vibe…" value={form.message} onChange={update}></textarea>
-          </div>
-          <button type="submit" className="btn btn--accent btn--full">Send Booking Request</button>
-          {note && <p className="form__note">{note}</p>}
         </Reveal>
       </div>
     </section>
