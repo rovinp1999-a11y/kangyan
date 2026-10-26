@@ -1,66 +1,60 @@
-# Kangyan — Emcee Portfolio (React)
+# Kangyan — Science & Maths Tuition
 
-An elegant, professional one-page website for **Kangyan**, a professional emcee &
-event host — built with **React + Vite** (plain JavaScript, no TypeScript).
+A one-page tuition website for **Kangyan** (Physics · Chemistry · Biology · Science · Mathematics,
+Form 1–5 / SPM / IGCSE) with a weekly availability grid, an enquiry form and a private admin page.
 
-## ✨ Features
-- **"Bold Editorial"** design in a **5-colour theme**: yellow · purple · green · blue · white
-- Fonts: **Bricolage Grotesque** (expressive display) + **Inter** (clean, ultra-readable body)
-- Oversized fluid typography, a **bento-grid** services section, a kinetic scrolling marquee, and hard-edged color blocking
-- Componentised React: Nav, Hero, Marquee, About, Services, Stats, Gallery, Testimonials, Contact, Footer
-- **Fully responsive** — every size is `clamp()`-fluid; breakpoints at 1024 / 860 / 540px; off-canvas mobile drawer; zero horizontal overflow 320 → 1920px
-- **Interactive & playful** (all in vanilla JS via `src/Effects.jsx`):
-  - Rainbow scroll-progress bar + scroll-spy active nav highlighting
-  - Custom trailing cursor ring (grows + turns yellow over interactive elements)
-  - Magnetic buttons that pull toward the cursor
-  - 3D tilt on the hero photo & bento tiles
-  - Cursor "spotlight" glow on the dark sections (on-theme stage lighting)
-  - Per-letter hero headline: entrance stagger + hover colour-pop/lift
-  - 🎉 Confetti burst on booking submit (`src/confetti.js`)
-  - Scroll-reveal animations + animated stat counters
-  - **Respect for accessibility** — heavy motion is gated behind `pointer: fine` + `prefers-reduced-motion`
-- Controlled booking form that opens a pre-filled email
-- Image placeholders auto-disappear when real photos are added
+Built with **React + Vite** (plain JavaScript), **Vercel Functions** for the API and **Neon Postgres**
+(provisioned through the Vercel Marketplace) for data.
 
-## 🚀 Run it
-```bash
-npm install      # first time only
-npm run dev      # dev server → http://localhost:4321
-npm run build    # production build → dist/
-npm run preview  # preview the production build
-```
+## How it works
+- **Students** scroll to *Availability*, tick the weekly slots they prefer, then send an enquiry
+  (name, contact, level, subjects, lesson format, message). Enquiries are stored in the database.
+- **Kangyan** opens `/admin`, logs in with the admin password, reads enquiries (and updates their
+  status: new → contacted → confirmed → closed) and edits the weekly timetable (add / mark taken / delete).
 
-## 🗂️ Structure
+## Project structure
 ```
 Kangyan/
-├── index.html              # Vite entry (loads /src/main.jsx)
-├── package.json
-├── vite.config.js
-├── public/
-│   └── assets/             # photos (see public/assets/README.md)
-│       └── gallery/
-└── src/
-    ├── main.jsx            # React entry
-    ├── App.jsx             # composes all sections
-    ├── styles.css          # theme, layout, responsive styles
-    ├── data.js             # services / gallery / testimonials / stats content
-    └── components/
-        ├── Reveal.jsx      # scroll-reveal wrapper
-        ├── Nav.jsx  Hero.jsx  Marquee.jsx  About.jsx
-        ├── Services.jsx (bento)  Stats.jsx  Gallery.jsx
-        └── Testimonials.jsx  Contact.jsx  Footer.jsx
+├── api/                    # Vercel Functions (Node.js)
+│   ├── _db.js              # lazy Neon client            ├── _auth.js  # admin token auth
+│   ├── _http.js            # small response helpers      ├── slots.js  # GET public timetable
+│   ├── enquiries.js        # POST a new enquiry
+│   ├── health.js           # GET DB connectivity check
+│   └── admin/              # login.js · enquiries.js (GET/PATCH) · slots.js (POST/PATCH/DELETE)
+├── shared/constants.js     # subjects, levels, formats, weekday + time helpers (used by UI and API)
+├── scripts/migrate.js      # creates tables, seeds a starter timetable if empty
+├── src/
+│   ├── App.jsx             # "/" → public site, "/admin" → admin dashboard
+│   ├── components/         # Nav · Hero · Marquee · Subjects · About · Testimonials
+│   │                       # BookingFlow → Availability (grid) + Enquire (form)
+│   ├── admin/AdminPage.jsx # login, enquiries tab, availability tab
+│   ├── data.js             # subject tiles + (placeholder) testimonials
+│   └── styles.css
+├── vercel.json             # rewrites /admin → index.html
+└── .env.local              # pulled from Vercel (DATABASE_URL, ADMIN_PASSWORD, …) — gitignored
 ```
 
-## 🖌️ Make it hers — quick edits
-1. **Photos** → add real images to `public/assets/` (see `public/assets/README.md` for filenames).
-2. **Bio** → edit the two paragraphs in `src/components/About.jsx`.
-3. **Services / testimonials / stats / gallery** → edit the arrays in `src/data.js`.
-4. **Contact** → replace `hello@kangyan.com` and the phone number in `src/components/Contact.jsx` (and Footer/Nav).
-5. **Colours** → all five theme colours live at the top of `src/styles.css` under `:root`.
+## Run it locally
+```bash
+npm install
+vercel env pull .env.local        # DB connection + admin password (needs `vercel login`)
+node scripts/migrate.js           # first time only — creates tables, seeds slots
+vercel dev --listen 4322          # site + API together → http://localhost:4322
+```
+`npm run dev` runs Vite alone (no API), which is fine for pure styling work.
 
-## 🌐 Deploy (free options)
-Run `npm run build` and deploy the `dist/` folder, or connect the repo to:
-- **Vercel / Netlify / Cloudflare Pages** — auto-detect Vite, build command `npm run build`, output `dist`.
+## Deploy
+```bash
+vercel --prod
+```
+The project is linked to Vercel (`kangyan`). Environment variables are managed on Vercel:
+`ADMIN_PASSWORD` is the admin login; the `DATABASE_URL` family comes from the Neon integration.
+Change the admin password with `vercel env rm ADMIN_PASSWORD <env>` then `vercel env add ADMIN_PASSWORD <env>`.
 
-> The copy is professionally written placeholder text — update the bio, stats and
-> testimonials with Kangyan's real details before going live.
+## Make it hers — quick edits
+1. **Photos** → `public/assets/kangyan-hero.jpg` and `kangyan-about.jpg`.
+2. **Bio / hero copy** → `src/components/Hero.jsx`, `src/components/About.jsx`.
+3. **Subjects, levels, formats** → `shared/constants.js` (drives the form and the API validation).
+4. **Subject tiles & testimonials** → `src/data.js` (testimonials are placeholders — replace before relying on them).
+5. **Timetable** → `/admin` → Availability. No redeploy needed.
+6. **Contact details** → `src/components/Enquire.jsx` and `Footer.jsx`.

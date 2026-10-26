@@ -2,15 +2,18 @@ import Effects from './Effects.jsx'
 import Nav from './components/Nav.jsx'
 import Hero from './components/Hero.jsx'
 import Marquee from './components/Marquee.jsx'
+import Subjects from './components/Subjects.jsx'
 import About from './components/About.jsx'
-import Services from './components/Services.jsx'
-import Stats from './components/Stats.jsx'
-import Gallery from './components/Gallery.jsx'
 import Testimonials from './components/Testimonials.jsx'
-import Contact from './components/Contact.jsx'
+import BookingFlow from './components/BookingFlow.jsx'
 import Footer from './components/Footer.jsx'
+import AdminPage from './admin/AdminPage.jsx'
 
+// Two routes only: "/" (public site) and "/admin" (tutor dashboard).
+// vercel.json rewrites /admin to index.html so this works on Vercel.
 export default function App() {
+  if (window.location.pathname.replace(/\/+$/, '') === '/admin') return <AdminPage />
+
   return (
     <>
       <Effects />
@@ -18,12 +21,10 @@ export default function App() {
       <main>
         <Hero />
         <Marquee />
+        <Subjects />
         <About />
-        <Services />
-        <Stats />
-        <Gallery />
         <Testimonials />
-        <Contact />
+        <BookingFlow />
       </main>
       <Footer />
     </>

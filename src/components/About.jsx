@@ -2,10 +2,10 @@ import { useState } from 'react'
 import Reveal from './Reveal.jsx'
 
 const POINTS = [
-  'Bilingual & bicultural hosting',
-  'Calm under pressure, sharp on timing',
-  'Tailored scripts for every event',
-  'Professional, reliable, prepared',
+  'SPM & IGCSE syllabus coverage',
+  'Past-year papers & exam technique',
+  'Patient, step-by-step explanations',
+  'Progress updates for parents',
 ]
 
 export default function About() {
@@ -35,17 +35,17 @@ export default function About() {
         <Reveal className="about__text">
           <p className="label" style={{ '--accent': 'var(--purple)' }}>About Kangyan</p>
           <p className="about__quote">
-            The voice that <em>holds the room</em> — from the first welcome to the final toast.
+            Science should <em>make sense</em> — not just be memorised.
           </p>
           <p>
-            I'm an emcee, host and presenter who believes every event deserves a confident,
-            charismatic guide. Whether I'm walking a couple down memory lane at their wedding
-            or driving the momentum of a packed conference, my job is the same: read the room,
-            honour the moment, and keep the energy exactly where it needs to be.
+            I tutor secondary students in Physics, Chemistry, Biology, Science and Mathematics,
+            preparing them for SPM and IGCSE. Every lesson starts from what you already understand
+            and builds up, one clear step at a time, until the hard topics feel obvious.
           </p>
           <p>
-            I blend polished professionalism with genuine warmth — handling the run-of-show,
-            improvising gracefully when plans shift, and making every guest feel seen.
+            Lessons blend concept teaching with timed past-year practice, so you learn the
+            material and the exam at the same time. Parents get regular updates on what we
+            covered and where to focus next.
           </p>
 
           <ul className="about__list">
@@ -59,7 +59,7 @@ export default function About() {
             ))}
           </ul>
 
-          <a href="#contact" className="btn" data-magnetic>Let's work together <span className="arrow">→</span></a>
+          <a href="#enquire" className="btn" data-magnetic>Start with an enquiry <span className="arrow">→</span></a>
         </Reveal>
       </div>
     </section>

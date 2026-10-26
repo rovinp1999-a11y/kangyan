@@ -1,6 +1,6 @@
 // 6 words (even count) duplicated → seamless -50% loop with a consistent
 // alternating filled/outlined rhythm via :nth-child(even) in CSS.
-const WORDS = ['Weddings', 'Corporate', 'Galas', 'Launches', 'Concerts', 'Celebrations']
+const WORDS = ['Physics', 'Chemistry', 'Biology', 'Mathematics', 'Science', 'SPM · IGCSE']
 
 export default function Marquee() {
   const loop = [...WORDS, ...WORDS]

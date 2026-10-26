@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 
 const LINKS = [
+  { href: '#subjects', label: 'Subjects' },
   { href: '#about', label: 'About' },
-  { href: '#services', label: 'Services' },
-  { href: '#gallery', label: 'Gallery' },
-  { href: '#testimonials', label: 'Praise' },
+  { href: '#testimonials', label: 'Reviews' },
+  { href: '#availability', label: 'Availability' },
 ]
 
 export default function Nav() {
@@ -39,8 +39,8 @@ export default function Nav() {
               {l.label}
             </a>
           ))}
-          <a href="#contact" className="nav__cta" onClick={close} data-magnetic>
-            Book Me
+          <a href="#enquire" className="nav__cta" onClick={close} data-magnetic>
+            Enquire
           </a>
         </nav>
 

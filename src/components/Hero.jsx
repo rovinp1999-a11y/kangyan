@@ -18,38 +18,39 @@ export default function Hero() {
       <div className="container hero__grid">
         <div className="hero__text">
           <p className="label hero__eyebrow" style={{ '--accent': 'var(--purple)' }}>
-            Professional Emcee · Host · Presenter
+            Science &amp; Maths Tutor · SPM · IGCSE
           </p>
-          <h1 className="hero__headline" aria-label="Emcee & Host">
-            <span className="line" aria-hidden="true">{chars('EMCEE', 0)}</span>
+          <h1 className="hero__headline" aria-label="Science & Maths">
+            <span className="line" aria-hidden="true">{chars('SCIENCE', 0)}</span>
             <span className="line line--2" aria-hidden="true">
-              {chars('&', 5)} <span className="hero__star">{chars('HOST', 6)}</span>
+              {chars('&', 7)} <span className="hero__star">{chars('MATHS', 8)}</span>
             </span>
           </h1>
 
           <div className="hero__sub">
             <p className="hero__lede">
-              I'm <strong>Kangyan</strong> — bringing energy, elegance and flawless flow
-              to weddings, corporate stages, galas and celebrations.
+              I'm <strong>Kangyan</strong> — I tutor Physics, Chemistry, Biology, Science
+              and Mathematics for Form 1–5, SPM and IGCSE students. Clear explanations,
+              exam-focused practice, real progress.
             </p>
           </div>
 
           <div className="hero__actions">
-            <a href="#contact" className="btn btn--accent btn--lg" data-magnetic>
-              Book Kangyan <span className="arrow">→</span>
+            <a href="#availability" className="btn btn--accent btn--lg" data-magnetic>
+              Check my availability <span className="arrow">→</span>
             </a>
-            <a href="#gallery" className="btn btn--ghost btn--lg" data-magnetic>See Highlights</a>
+            <a href="#enquire" className="btn btn--ghost btn--lg" data-magnetic>Send an enquiry</a>
           </div>
         </div>
 
         <div className="hero__media">
-          <span className="hero__tag">Available for bookings</span>
+          <span className="hero__tag">Taking new students</span>
           <div className="hero__photo" data-tilt="7">
             {/* 📸 REPLACE: public/assets/kangyan-hero.jpg */}
             {!missing ? (
               <img
                 src="/assets/kangyan-hero.jpg"
-                alt="Kangyan hosting on stage"
+                alt="Kangyan, science and maths tutor"
                 onError={() => setMissing(true)}
               />
             ) : (

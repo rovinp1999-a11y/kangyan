@@ -18,7 +18,7 @@ export default function Testimonials() {
         <Reveal as="div" className="section-head">
           <div>
             <p className="label" style={{ '--accent': 'var(--yellow)' }}>Kind Words</p>
-            <h2 className="section-head__title">What clients say.</h2>
+            <h2 className="section-head__title">What students and parents say.</h2>
           </div>
         </Reveal>
 
