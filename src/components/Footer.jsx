@@ -7,7 +7,7 @@ export default function Footer() {
       <div className="container footer__inner">
         <div>
           <a href="#home" className="nav__logo">Kangyan<span className="dot" aria-hidden="true" /></a>
-          <p className="footer__tag">Science &amp; Maths tuition · Form 1–5 · SPM · IGCSE</p>
+          <p className="footer__tag">Science and Maths tuition for Form 1–5 (KSSM), SPM and IGCSE · Online and in-person</p>
         </div>
         <div className="footer__social">
           <a href={CONTACT.whatsapp} target="_blank" rel="noopener noreferrer" aria-label="WhatsApp">
@@ -22,8 +22,7 @@ export default function Footer() {
         </div>
       </div>
       <div className="container footer__base">
-        <span>© {year} Kangyan</span>
-        <a href="/admin">Admin</a>
+        <span>© {year} Kangyan. All rights reserved.</span>
       </div>
     </footer>
   )

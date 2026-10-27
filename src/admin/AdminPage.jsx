@@ -529,7 +529,15 @@ export default function AdminPage() {
   const [toast, setToast] = useState(null)
   const timer = useRef(null)
 
-  useEffect(() => { document.title = 'Admin — Kangyan' }, [])
+  // Keep the dashboard out of search results.
+  useEffect(() => {
+    document.title = 'Admin — Kangyan'
+    const meta = document.createElement('meta')
+    meta.name = 'robots'
+    meta.content = 'noindex, nofollow'
+    document.head.appendChild(meta)
+    return () => meta.remove()
+  }, [])
   useEffect(() => { window.scrollTo({ top: 0 }) }, [tab])
 
   const notify = useCallback((text, kind = 'ok') => {

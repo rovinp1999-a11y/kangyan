@@ -55,8 +55,8 @@ export default function BookingFlow() {
       <div className="container">
         <Reveal className="sec-head">
           <p className="kicker">Enquire</p>
-          <h2>Check my timetable and send an enquiry.</h2>
-          <p>Pick any times you'd prefer, tell me about the student, and I'll reply within 48 hours.</p>
+          <h2>Check my timetable, then send an enquiry</h2>
+          <p>Choosing times is optional. Enquiring is free and doesn't commit you to anything.</p>
         </Reveal>
 
         <div className="book__grid">
@@ -64,7 +64,7 @@ export default function BookingFlow() {
           <div className="book__form" id="enquire-form" ref={formCol}>
             <Enquire selectedSlots={selectedSlots} onRemoveSlot={remove} onSubmitted={() => setSelected(new Set())} />
             <p className="book__contact">
-              Prefer to chat?{' '}
+              Rather message directly?{' '}
               <a href={CONTACT.whatsapp} target="_blank" rel="noopener noreferrer">WhatsApp</a> ·{' '}
               <a href={`mailto:${CONTACT.email}`}>Email</a> ·{' '}
               <a href={CONTACT.instagram} target="_blank" rel="noopener noreferrer">Instagram</a>

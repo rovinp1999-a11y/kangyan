@@ -29,7 +29,7 @@ export default function Enquire({ selectedSlots, onRemoveSlot, onSubmitted }) {
       return
     }
     if (form.subjects.length === 0) {
-      setError('Pick at least one subject.')
+      setError('Please choose at least one subject.')
       return
     }
     setBusy(true)
@@ -62,8 +62,8 @@ export default function Enquire({ selectedSlots, onRemoveSlot, onSubmitted }) {
         <span className="done__ic" aria-hidden="true">
           <svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" /></svg>
         </span>
-        <h3>Thanks, {done}!</h3>
-        <p>Your enquiry is in. I'll reply within 48 hours to confirm a time and fees.</p>
+        <h3>Thank you, {done}!</h3>
+        <p>Your enquiry has been sent. I'll get back to you within 48 hours by WhatsApp or email with a suggested time and the fees.</p>
         <button type="button" className="btn btn--ghost btn--sm" onClick={() => setDone(null)}>Send another enquiry</button>
       </div>
     )
@@ -79,24 +79,24 @@ export default function Enquire({ selectedSlots, onRemoveSlot, onSubmitted }) {
       </div>
       <div className="field field--row">
         <div>
-          <label htmlFor="email">Email</label>
+          <label htmlFor="email">Parent or student email</label>
           <input id="email" name="email" type="email" autoComplete="email" inputMode="email" placeholder="you@email.com" value={form.email} onChange={update} required />
         </div>
         <div>
-          <label htmlFor="phone">WhatsApp <small>optional</small></label>
+          <label htmlFor="phone">WhatsApp number <small>optional</small></label>
           <input id="phone" name="phone" type="tel" autoComplete="tel" inputMode="tel" placeholder="012-345 6789" value={form.phone} onChange={update} />
         </div>
       </div>
       <div className="field">
-        <label htmlFor="level">Level</label>
+        <label htmlFor="level">Current level</label>
         <select id="level" name="level" value={form.level} onChange={update} required>
-          <option value="">Select level…</option>
+          <option value="">Choose a level…</option>
           {LEVELS.map((l) => <option key={l}>{l}</option>)}
         </select>
       </div>
 
       <fieldset className="field">
-        <legend>Subjects</legend>
+        <legend>Subjects needed</legend>
         <div className="pills">
           {SUBJECTS.map((s) => {
             const on = form.subjects.includes(s)
@@ -111,7 +111,7 @@ export default function Enquire({ selectedSlots, onRemoveSlot, onSubmitted }) {
       </fieldset>
 
       <fieldset className="field">
-        <legend>Lessons</legend>
+        <legend>Lesson type</legend>
         <div className="pills">
           {FORMATS.map((f) => (
             <label key={f.value} className={`pill ${form.format === f.value ? 'is-on' : ''}`}>
@@ -125,7 +125,7 @@ export default function Enquire({ selectedSlots, onRemoveSlot, onSubmitted }) {
       <div className="field">
         <span className="field__label">Preferred times</span>
         {selectedSlots.length === 0 ? (
-          <p className="field__hint">None picked — <a href="#timetable">choose from the timetable</a> or leave it if you're flexible.</p>
+          <p className="field__hint">None chosen yet. <a href="#timetable">Pick from the timetable</a>, or leave it and I'll suggest times.</p>
         ) : (
           <div className="chips">
             {selectedSlots.map((s) => (
@@ -139,8 +139,8 @@ export default function Enquire({ selectedSlots, onRemoveSlot, onSubmitted }) {
       </div>
 
       <div className="field">
-        <label htmlFor="message">Anything else? <small>optional</small></label>
-        <textarea id="message" name="message" rows="3" placeholder="Current grades, exam date, hardest topics…" value={form.message} onChange={update} />
+        <label htmlFor="message">What would you like help with? <small>optional</small></label>
+        <textarea id="message" name="message" rows="3" placeholder="e.g. Form 4, finds electricity hard, sitting SPM next year" value={form.message} onChange={update} />
       </div>
 
       {/* Honeypot — hidden from humans, bots tend to fill it. */}
@@ -149,6 +149,7 @@ export default function Enquire({ selectedSlots, onRemoveSlot, onSubmitted }) {
       <button type="submit" className="btn btn--accent btn--full" disabled={busy}>
         {busy ? 'Sending…' : 'Send enquiry'}
       </button>
+      <p className="form__fine">Free and no commitment. I'll reply within 48 hours.</p>
       {error && <p className="form__note is-error" role="alert">{error}</p>}
     </form>
   )

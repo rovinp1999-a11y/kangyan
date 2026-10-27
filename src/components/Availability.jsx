@@ -17,9 +17,9 @@ export default function Availability({ slots, selected, onToggle, loading, error
   const count = selected.size
   return (
     <div className="panel" id="timetable">
-      <h3 className="panel__step"><span>1</span>Pick times that suit you <small>optional</small></h3>
+      <h3 className="panel__step"><span>1</span>Pick your times <small>optional</small></h3>
 
-      {error && <p className="tt__note">Couldn't load the timetable. You can still send an enquiry.</p>}
+      {error && <p className="tt__note">The timetable didn't load. You can still send an enquiry and I'll suggest times.</p>}
 
       <div className="tt" aria-busy={loading}>
         {WEEKDAYS_SHORT.map((d, i) => {
@@ -58,7 +58,7 @@ export default function Availability({ slots, selected, onToggle, loading, error
       </div>
 
       <p className="tt__foot">
-        <span>{count ? `${count} time${count > 1 ? 's' : ''} selected` : 'Tap a time to select it.'}</span>
+        <span>{count ? `${count} time${count > 1 ? 's' : ''} selected` : 'Tap any times that work. Pick as many as you like.'}</span>
         <span className="tt__legend"><i className="lg lg--sel" />Selected <i className="lg lg--taken" />Taken</span>
       </p>
     </div>

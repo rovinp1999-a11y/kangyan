@@ -4,6 +4,7 @@ const LINKS = [
   { href: '#subjects', label: 'Subjects' },
   { href: '#how', label: 'How it works' },
   { href: '#timetable', label: 'Timetable' },
+  { href: '#faq', label: 'FAQ' },
 ]
 
 export default function Nav() {
