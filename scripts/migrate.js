@@ -35,6 +35,7 @@ const statements = [
      lesson_type     TEXT NOT NULL DEFAULT 'private' CHECK (lesson_type IN ('private','group')),
      location        TEXT,
      lang            TEXT NOT NULL DEFAULT 'en',
+     enquirer        TEXT CHECK (enquirer IN ('parent','student')),
      message         TEXT,
      preferred_slots JSONB NOT NULL DEFAULT '[]'::jsonb,
      status          TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new','contacted','confirmed','closed'))
@@ -51,6 +52,7 @@ const statements = [
   `ALTER TABLE enquiries ALTER COLUMN email DROP NOT NULL`,
   `ALTER TABLE enquiries ADD COLUMN IF NOT EXISTS location TEXT`,
   `ALTER TABLE enquiries ADD COLUMN IF NOT EXISTS lang TEXT NOT NULL DEFAULT 'en'`,
+  `ALTER TABLE enquiries ADD COLUMN IF NOT EXISTS enquirer TEXT CHECK (enquirer IN ('parent','student'))`,
 ]
 for (const s of statements) await sql.query(s)
 

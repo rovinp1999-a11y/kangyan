@@ -135,6 +135,8 @@ textarea.wz__input { resize: vertical; min-height: 0; font-size: 1rem; }
 .wz__cardic[data-k="online"] { background: var(--blue); color: var(--white); }
 .wz__cardic[data-k="in-person"] { background: var(--green); color: var(--white); }
 .wz__cardic[data-k="either"] { background: var(--yellow); }
+.wz__cardic[data-k="parent"] { background: var(--blue); color: var(--white); }
+.wz__cardic[data-k="student"] { background: var(--yellow); }
 .wz__cardic svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 .wz__cardtxt strong { display: block; font-family: var(--ff-display); font-size: 1.1rem; }
 .wz__cardtxt span { display: block; font-size: .86rem; color: var(--muted); margin-top: 3px; line-height: 1.45; }
@@ -540,3 +542,7 @@ textarea.wz__input { resize: vertical; min-height: 0; font-size: 1rem; }
 
 .enq__loc { display: flex; align-items: center; gap: 6px; font-size: .88rem; font-weight: 600; color: var(--ink-soft); }
 .enq__loc .ic { width: 16px; height: 16px; flex: none; color: var(--green); }
+
+.tag-e { font-size: .78rem; font-weight: 700; padding: 4px 10px; border-radius: 999px; white-space: nowrap; border: 1.5px solid var(--ink); }
+.tag-e--parent { background: #DBEAFE; }
+.tag-e--student { background: #FEF3C7; }

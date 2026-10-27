@@ -1,18 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { SUBJECTS, LEVEL_GROUPS, LEVELS, LESSON_TYPES } from '../../shared/constants.js'
+import { SUBJECTS, LEVEL_GROUPS, LEVELS, LESSON_TYPES, ENQUIRERS } from '../../shared/constants.js'
 import { useLang, shortRange } from '../i18n.jsx'
 import { confettiBurst } from '../confetti.js'
 import { subjectTiles } from '../data.js'
 
 // One-question-at-a-time enquiry flow:
-// name → private/group → level → subjects → times (filtered by class type)
+// parent or student → name → private/group → level → subjects → times (filtered by class type)
 // → online/in person → contact + note → done.
-const STEPS = ['name', 'type', 'level', 'subjects', 'times', 'format', 'contact']
+const STEPS = ['who', 'name', 'type', 'level', 'subjects', 'times', 'format', 'contact']
+const at = (id) => STEPS.indexOf(id)
 const DRAFT_KEY = 'kangyan-enquiry-draft'
 const EMAIL_RE = /^[^\s@?&=]+@[^\s@?&=]+\.[^\s@?&=]+$/ // same rule as the server
 // Server error code → wizard step to send the student back to.
-const CODE_STEP = { name: 0, lessonType: 1, level: 2, subjects: 3, format: 5, location: 5, phone: 6, email: 6, contact: 6 }
-const EMPTY = { name: '', lessonType: '', level: '', subjects: [], slots: [], format: '', location: '', phone: '', email: '', message: '', website: '' }
+const CODE_STEP = { enquirer: 'who', name: 'name', lessonType: 'type', level: 'level', subjects: 'subjects', format: 'format', location: 'format', phone: 'contact', email: 'contact', contact: 'contact' }
+const EMPTY = { enquirer: '', name: '', lessonType: '', level: '', subjects: [], slots: [], format: '', location: '', phone: '', email: '', message: '', website: '' }
 
 const loadDraft = () => {
   try {
@@ -23,6 +24,7 @@ const loadDraft = () => {
       const s = (v, max) => (typeof v === 'string' ? v.slice(0, max) : '')
       const data = {
         ...EMPTY,
+        enquirer: ENQUIRERS.includes(r.enquirer) ? r.enquirer : '',
         name: s(r.name, 80),
         lessonType: LESSON_TYPES.includes(r.lessonType) ? r.lessonType : '',
         level: LEVELS.includes(r.level) ? r.level : '',
@@ -45,6 +47,7 @@ const firstName = (n) => n.trim().split(/\s+/)[0] || n.trim()
 
 // Does each step have what it needs? (times is optional, contact is checked on submit)
 const stepValid = (d) => ({
+  who: !!d.enquirer,
   name: d.name.trim().length >= 2,
   type: !!d.lessonType,
   level: !!d.level,
@@ -73,6 +76,8 @@ const ICON = {
   online: 'M3 5h18v11H3z M8 20h8 M12 16v4',
   person: 'M12 21s-7-6.2-7-11.5A7 7 0 0112 2.5a7 7 0 017 7C19 14.8 12 21 12 21z M12 12a2.5 2.5 0 100-5 2.5 2.5 0 000 5z',
   either: 'M7 16l-4-4 4-4 M17 8l4 4-4 4 M3 12h18',
+  parent: 'M8 7a3 3 0 100-6 3 3 0 000 6z M17 10a2.5 2.5 0 100-5 2.5 2.5 0 000 5z M2 21v-2a5 5 0 015-5h2a5 5 0 015 5v2 M14 21v-1.5a4 4 0 013.5-4h.5a4 4 0 014 4V21',
+  student: 'M22 9L12 4 2 9l10 5 10-5z M6 11v5c0 1.7 2.7 3 6 3s6-1.3 6-3v-5 M22 9v6',
 }
 
 export default function Wizard() {
@@ -146,7 +151,7 @@ export default function Wizard() {
   useEffect(() => {
     if (!avail || !data.lessonType || !typeOff(data.lessonType)) return
     setData((d) => ({ ...d, lessonType: '', slots: [] }))
-    if (step > 1) { setDir('back'); setStep(1) }
+    if (step > at('type')) { setDir('back'); setStep(at('type')) }
   }, [slotsState]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const go = (to) => {
@@ -195,6 +200,7 @@ export default function Wizard() {
           format: data.format || 'either', lessonType: data.lessonType, message: data.message,
           location: data.format === 'online' ? '' : data.location.trim(),
           lang,
+          enquirer: data.enquirer,
           preferredSlots: pickedSlots.map((s) => s.id), website: data.website,
         }),
       })
@@ -202,7 +208,7 @@ export default function Wizard() {
       if (!res.ok || !json.ok) {
         // Validation problem: show a translated message on the step that needs fixing.
         if (json.code && json.code in CODE_STEP) {
-          const to = CODE_STEP[json.code]
+          const to = at(CODE_STEP[json.code])
           if (to !== step) go(to)
           setError(w.errors[json.code])
           return
@@ -215,7 +221,7 @@ export default function Wizard() {
         confettiBurst(r.left + r.width / 2, r.top + r.height / 2)
       }
       moved.current = true
-      setDone(name)
+      setDone({ name, who: data.enquirer })
       setData(EMPTY)
       setStep(0)
     } catch (e) {
@@ -237,8 +243,8 @@ export default function Wizard() {
       <div className="wz wz--done" role="status">
         <div className="wz__body" ref={bodyRef}>
           <span className="wz__doneic" aria-hidden="true"><Icon d={ICON.check} /></span>
-          <h2 tabIndex={-1}>{w.done.title(done)}</h2>
-          <p className="wz__help">{w.done.text}</p>
+          <h2 tabIndex={-1}>{w.done.title(done.name, done.who)}</h2>
+          <p className="wz__help">{w.done.text(done.name, done.who)}</p>
           <div className="wz__doneacts">
             <button type="button" className="btn btn--ghost" onClick={() => { moved.current = true; setDone(null) }}>{w.done.again}</button>
           </div>
@@ -255,19 +261,37 @@ export default function Wizard() {
 
   let body
   switch (id) {
-    case 'name':
+    case 'who':
       body = (
         <>
-          <h2 tabIndex={-1}>{w.name.q}</h2>
-          <p className="wz__help">{w.name.help}</p>
-          <input className="wz__input" type="text" autoComplete="name" placeholder={w.name.ph} value={data.name} onChange={(e) => set('name', e.target.value)} aria-label={w.name.q} maxLength={80} />
+          <h2 tabIndex={-1}>{w.who.q}</h2>
+          <p className="wz__help">{w.who.help}</p>
+          <div className="wz__cards">
+            {ENQUIRERS.map((k) => (
+              <button type="button" key={k} className={`wz__card ${data.enquirer === k ? 'is-on' : ''}`} aria-pressed={data.enquirer === k} onClick={() => choose('enquirer', k)}>
+                <span className="wz__cardic" data-k={k}><Icon d={k === 'parent' ? ICON.parent : ICON.student} /></span>
+                <span className="wz__cardtxt"><strong>{w.who[k].title}</strong><span>{w.who[k].desc}</span></span>
+              </button>
+            ))}
+          </div>
         </>
       )
       break
+    case 'name': {
+      const who = data.enquirer || 'student'
+      body = (
+        <>
+          <h2 tabIndex={-1}>{w.name.q[who]}</h2>
+          <p className="wz__help">{w.name.help}</p>
+          <input className="wz__input" type="text" autoComplete={who === 'student' ? 'name' : 'off'} placeholder={w.name.ph[who]} value={data.name} onChange={(e) => set('name', e.target.value)} aria-label={w.name.q[who]} maxLength={80} />
+        </>
+      )
+      break
+    }
     case 'type':
       body = (
         <>
-          <h2 tabIndex={-1}>{w.type.q(name)}</h2>
+          <h2 tabIndex={-1}>{w.type.q(name, data.enquirer)}</h2>
           <p className="wz__help">{w.type.help}</p>
           <div className="wz__cards">
             {['private', 'group'].map((k) => {
@@ -300,7 +324,7 @@ export default function Wizard() {
     case 'level':
       body = (
         <>
-          <h2 tabIndex={-1}>{w.level.q(name)}</h2>
+          <h2 tabIndex={-1}>{w.level.q(name, data.enquirer)}</h2>
           <p className="wz__help">{w.level.help}</p>
           <div className="wz__levels">
             {LEVEL_GROUPS.map((g) => (
@@ -426,11 +450,12 @@ export default function Wizard() {
       break
     default: {
       const summary = [
-        { label: typeLabel, to: 1 },
-        { label: L.levels[data.level] || data.level, to: 2 },
-        { label: data.subjects.map((s) => L.subjects[s]).join(' · '), to: 3 },
-        { label: pickedSlots.length ? w.times.picked(pickedSlots.length) : w.contact.flexible, to: 4 },
-        { label: (L.formats[data.format] || L.formats.either) + (data.format !== 'online' && data.location.trim() ? ` · ${data.location.trim()}` : ''), to: 5 },
+        { label: L.enquirers[data.enquirer] || '', to: at('who') },
+        { label: typeLabel, to: at('type') },
+        { label: L.levels[data.level] || data.level, to: at('level') },
+        { label: data.subjects.map((s) => L.subjects[s]).join(' · '), to: at('subjects') },
+        { label: pickedSlots.length ? w.times.picked(pickedSlots.length) : w.contact.flexible, to: at('times') },
+        { label: (L.formats[data.format] || L.formats.either) + (data.format !== 'online' && data.location.trim() ? ` · ${data.location.trim()}` : ''), to: at('format') },
       ]
       body = (
         <>
@@ -455,7 +480,7 @@ export default function Wizard() {
           <div className="wz__summary">
             <span className="wz__summarytitle">{w.contact.summary}</span>
             <div className="wz__chips">
-              <button type="button" className="wz__chip" onClick={() => go(0)}>{data.name.trim()}</button>
+              <button type="button" className="wz__chip" onClick={() => go(at('name'))}>{data.name.trim()}</button>
               {summary.map((x) => (
                 <button type="button" key={x.to} className="wz__chip" onClick={() => go(x.to)}>{x.label}</button>
               ))}
@@ -468,9 +493,9 @@ export default function Wizard() {
 
   const isLast = id === 'contact'
   const optionalStep = id === 'times' && days.length > 0 && openCount(data.lessonType) > 0
-  const autoStep = id === 'type' || id === 'level' || id === 'format'
+  const autoStep = id === 'who' || id === 'type' || id === 'level' || id === 'format'
   // Auto-advancing steps only show Continue once something is chosen.
-  const chosen = { type: data.lessonType, level: data.level, format: data.format }[id]
+  const chosen = { who: data.enquirer, type: data.lessonType, level: data.level, format: data.format }[id]
 
   return (
     <form className="wz" onSubmit={onSubmit} noValidate>

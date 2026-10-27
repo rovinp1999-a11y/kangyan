@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  WEEKDAYS, WEEKDAYS_SHORT, ENQUIRY_STATUSES, FORMATS, LESSON_TYPES, LESSON_TYPE_LABEL, LEVEL_GROUPS, formatRange,
+  WEEKDAYS, WEEKDAYS_SHORT, ENQUIRY_STATUSES, FORMATS, LESSON_TYPES, LESSON_TYPE_LABEL, LEVEL_GROUPS, ENQUIRER_LABEL, formatRange,
 } from '../../shared/constants.js'
 import { STRINGS, shortRange } from '../i18n.jsx'
 
@@ -85,7 +85,11 @@ export function draftMessage(r) {
 
   if (zh) {
     return [
-      `你好！我是 Kangyan，教理科和数学的补习老师。谢谢你留下${first}的补习资料。`,
+      r.enquirer === 'parent'
+        ? `你好！我是 Kangyan，教理科和数学的补习老师。谢谢你帮${first}留下补习资料。`
+        : r.enquirer === 'student'
+          ? `${first}你好！我是 Kangyan，教理科和数学的补习老师。谢谢你留下补习资料。`
+          : `你好！我是 Kangyan，教理科和数学的补习老师。谢谢你留下${first}的补习资料。`,
       '',
       '我这边收到的是：',
       `• ${type}`,
@@ -98,7 +102,9 @@ export function draftMessage(r) {
     ].join('\n')
   }
   return [
-    `Hi, this is Kangyan, the Science and Maths tutor. Thanks for your enquiry about tuition for ${first}!`,
+    r.enquirer === 'student'
+      ? `Hi ${first}, this is Kangyan, the Science and Maths tutor. Thanks for your enquiry about tuition!`
+      : `Hi, this is Kangyan, the Science and Maths tutor. Thanks for your enquiry about tuition for ${first}!`,
     '',
     "Here's a quick summary of what you sent:",
     `• Class: ${type}`,
@@ -298,6 +304,7 @@ function EnquiryCard({ r, onStatus, notify }) {
       </header>
 
       <div className="enq__tags">
+        {r.enquirer && <span className={`tag-e tag-e--${r.enquirer}`}>{ENQUIRER_LABEL[r.enquirer]}</span>}
         <span className={`tag-k tag-k--${r.lesson_type || 'private'}`}>{LESSON_TYPE_LABEL[r.lesson_type] || LESSON_TYPE_LABEL.private}</span>
         {r.subjects.map((s) => <span className="tag-s" key={s}>{s}</span>)}
         <span className="tag-f">{FORMAT_LABEL[r.format] || r.format}</span>
@@ -356,7 +363,7 @@ function EnquiriesTab({ rows, setRows, onAuthError, notify }) {
     const list = rows.filter((r) => {
       if (filter !== 'all' && r.status !== filter) return false
       if (!needle) return true
-      return [r.student_name, r.email, r.phone, r.level, r.message, r.location, LESSON_TYPE_LABEL[r.lesson_type], ...r.subjects]
+      return [r.student_name, r.email, r.phone, r.level, r.message, r.location, LESSON_TYPE_LABEL[r.lesson_type], ENQUIRER_LABEL[r.enquirer], ...r.subjects]
         .filter(Boolean)
         .some((v) => v.toLowerCase().includes(needle))
     })

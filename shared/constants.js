@@ -24,6 +24,10 @@ export const WEEKDAYS_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 export const SLOT_STATUSES = ['open', 'taken']
 
 // What kind of class a timetable slot is, and what the enquirer asks for.
+// Who filled in the enquiry.
+export const ENQUIRERS = ['parent', 'student']
+export const ENQUIRER_LABEL = { parent: 'Parent', student: 'Student' }
+
 export const LESSON_TYPES = ['private', 'group']
 export const LESSON_TYPE_LABEL = { private: 'Private 1-to-1', group: 'Group class' }
 export const ENQUIRY_STATUSES = ['new', 'contacted', 'confirmed', 'closed']

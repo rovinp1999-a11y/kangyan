@@ -1,7 +1,7 @@
 // POST /api/enquiries — a student/parent submits a tuition enquiry.
 import { getSql } from './_db.js'
 import { allow, readBody, send, fail, isDbId } from './_http.js'
-import { SUBJECTS, LEVELS, FORMATS, LESSON_TYPES, slotLabel } from '../shared/constants.js'
+import { SUBJECTS, LEVELS, FORMATS, LESSON_TYPES, ENQUIRERS, slotLabel } from '../shared/constants.js'
 
 // No ? & = so an address can't smuggle extra parameters into a mailto: link.
 const EMAIL_RE = /^[^\s@?&=]+@[^\s@?&=]+\.[^\s@?&=]+$/
@@ -22,6 +22,8 @@ export default async function handler(req, res) {
   const lessonType = str(b.lessonType, 20) || 'private'
   const location = str(b.location, 200)
   const lang = b.lang === 'zh' ? 'zh' : 'en'
+  // Optional for pages cached before this question existed; must be valid if sent.
+  const enquirer = b.enquirer == null || b.enquirer === '' ? null : str(b.enquirer, 10)
   const message = str(b.message, 2000)
   const subjects = Array.isArray(b.subjects) ? b.subjects.filter((s) => SUBJECTS.includes(s)) : []
   const slotIds = Array.isArray(b.preferredSlots)
@@ -30,6 +32,7 @@ export default async function handler(req, res) {
 
   const phoneDigits = phone.replace(/\D/g, '')
   // Checked in wizard order, so the client can send the student to the first problem.
+  if (enquirer !== null && !ENQUIRERS.includes(enquirer)) return fail(res, 400, 'Please say who is filling this in', 'enquirer')
   if (name.length < 2) return fail(res, 400, 'Please enter your name', 'name')
   if (!LESSON_TYPES.includes(lessonType)) return fail(res, 400, 'Invalid lesson type', 'lessonType')
   if (!LEVELS.includes(level)) return fail(res, 400, 'Please choose a level', 'level')
@@ -55,8 +58,8 @@ export default async function handler(req, res) {
     }
 
     const [row] = await sql`
-      INSERT INTO enquiries (student_name, email, phone, level, subjects, format, lesson_type, location, lang, message, preferred_slots)
-      VALUES (${name}, ${email || null}, ${phone || null}, ${level}, ${subjects}, ${format}, ${lessonType}, ${format === 'online' ? null : location || null}, ${lang}, ${message || null}, ${JSON.stringify(preferred)}::jsonb)
+      INSERT INTO enquiries (student_name, email, phone, level, subjects, format, lesson_type, location, lang, enquirer, message, preferred_slots)
+      VALUES (${name}, ${email || null}, ${phone || null}, ${level}, ${subjects}, ${format}, ${lessonType}, ${format === 'online' ? null : location || null}, ${lang}, ${enquirer}, ${message || null}, ${JSON.stringify(preferred)}::jsonb)
       RETURNING id`
     return send(res, 201, { ok: true, id: row.id })
   } catch (err) {

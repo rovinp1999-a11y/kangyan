@@ -36,6 +36,7 @@ const en = {
     submit: 'Send enquiry',
     failed: 'Something went wrong. Please try again in a moment.',
     errors: {
+      enquirer: 'Please choose parent or student.',
       name: "Please enter the student's name.",
       lessonType: 'Please choose 1-to-1 or a group class.',
       level: 'Please choose a level.',
@@ -46,13 +47,19 @@ const en = {
       email: "That email doesn't look right.",
       contact: 'Please add a WhatsApp number or an email.',
     },
+    who: {
+      q: "Who's filling this in?",
+      help: "Just so I know who I'm talking to.",
+      parent: { title: "I'm a parent", desc: 'Enquiring for my child' },
+      student: { title: "I'm the student", desc: 'Enquiring for myself' },
+    },
     name: {
-      q: "What's the student's name?",
+      q: { parent: "What's your child's name?", student: "What's your name?" },
       help: "Let's find the right class. This takes about a minute.",
-      ph: "Student's full name",
+      ph: { parent: "Your child's full name", student: 'Your full name' },
     },
     type: {
-      q: (n) => `Hi ${n}! Private 1-to-1 or a group class?`,
+      q: (n, who) => (who === 'parent' ? `Private 1-to-1 or a group class for ${n}?` : `Hi ${n}! Private 1-to-1 or a group class?`),
       help: 'You can change this later.',
       private: { title: 'Private 1-to-1', desc: "Lessons built around one student's pace and gaps." },
       group: { title: 'Group class', desc: 'Learn alongside a few students at the same level.' },
@@ -62,7 +69,7 @@ const en = {
       noPrivate: 'Private slots are full right now. Please choose a group class.',
       allFull: "All slots are full at the moment. You can still enquire and I'll let you know when one opens.",
     },
-    level: { q: (n) => `Which level is ${n} in?`, help: 'Chinese independent school (UEC), national school (SPM) or IGCSE.' },
+    level: { q: (n, who) => (who === 'parent' ? `Which level is ${n} in?` : 'Which level are you in?'), help: 'Chinese independent school (UEC), national school (SPM) or IGCSE.' },
     subjects: { q: 'Which subjects do you need help with?', help: 'Pick one or more.' },
     times: {
       q: 'Which times suit you?',
@@ -100,14 +107,17 @@ const en = {
       badPhone: 'That WhatsApp number looks too short.',
     },
     done: {
-      title: (n) => `Thanks, ${n}!`,
-      text: "Your enquiry is in. I'll reply within 48 hours with a suggested time and the fees.",
+      title: (n, who) => (who === 'parent' ? 'Thank you!' : `Thanks, ${n}!`),
+      text: (n, who) => (who === 'parent'
+        ? `I've received your enquiry for ${n}. I'll reply within 48 hours with a suggested time and the fees.`
+        : "Your enquiry is in. I'll reply within 48 hours with a suggested time and the fees."),
       again: 'Start a new enquiry',
     },
   },
   footer: { rights: (y) => `© ${y} Kangyan` },
   labels: {
     lessonTypes: { private: 'Private 1-to-1', group: 'Group class' },
+    enquirers: { parent: 'Parent', student: 'Student' },
     subjects: { Physics: 'Physics', Chemistry: 'Chemistry', Biology: 'Biology', Science: 'Science', Mathematics: 'Maths' },
     levelGroups: { uec: 'Chinese independent · UEC', kssm: 'National school · SPM', igcse: 'International · IGCSE', other: 'Other' },
     levels: {
@@ -151,6 +161,7 @@ const zh = {
     submit: '送出咨询',
     failed: '哎呀，没送出去。请稍等一下再试一次。',
     errors: {
+      enquirer: '请选择家长或学生。',
       name: '请填写学生姓名。',
       lessonType: '请选择一对一或小组课。',
       level: '请选择年级。',
@@ -161,13 +172,19 @@ const zh = {
       email: '电邮好像不太对，再检查一下？',
       contact: '请留个 WhatsApp 号码或电邮，我才联系得到你。',
     },
+    who: {
+      q: '请问你是？',
+      help: '方便我知道怎么称呼你。',
+      parent: { title: '我是家长', desc: '帮孩子咨询补习' },
+      student: { title: '我是学生', desc: '自己来咨询' },
+    },
     name: {
-      q: '先告诉我，学生怎么称呼？',
+      q: { parent: '孩子叫什么名字？', student: '你叫什么名字？' },
       help: '大概一分钟就能填完，我好帮你安排合适的课。',
-      ph: '学生姓名',
+      ph: { parent: '孩子的姓名', student: '你的姓名' },
     },
     type: {
-      q: (n) => `${n}，想上一对一，还是小组课？`,
+      q: (n, who) => (who === 'parent' ? `想帮${n}报一对一，还是小组课？` : `${n}，想上一对一，还是小组课？`),
       help: '还没想好也没关系，之后可以再改。',
       private: { title: '一对一私人课', desc: '整堂课只顾一位学生，跟着他的进度和弱项来教。' },
       group: { title: '小组课', desc: '几位程度相近的同学一起上，互相讨论、一起进步。' },
@@ -177,7 +194,7 @@ const zh = {
       noPrivate: '一对一目前都满了，可以先报小组课。',
       allFull: '目前所有时段都满了。不过你还是可以先留个资料，一有空位我就联系你。',
     },
-    level: { q: (n) => `${n}现在读几年级？`, help: '独中、国中、国际学校都可以。' },
+    level: { q: (n, who) => (who === 'parent' ? `${n}现在读几年级？` : '你现在读几年级？'), help: '独中、国中、国际学校都可以。' },
     subjects: { q: '想补哪些科目？', help: '可以选不止一科。' },
     times: {
       q: '哪些时间比较方便？',
@@ -215,14 +232,17 @@ const zh = {
       badPhone: 'WhatsApp 号码好像少了几个数字。',
     },
     done: {
-      title: (n) => `谢谢你，${n}！`,
-      text: '资料已经收到了。我会在 48 小时内通过 WhatsApp 或电邮联系你，跟你确认上课时间和学费。',
+      title: (n, who) => (who === 'parent' ? '谢谢你！' : `谢谢你，${n}！`),
+      text: (n, who) => (who === 'parent'
+        ? `已经收到${n}的补习资料。我会在 48 小时内通过 WhatsApp 或电邮联系你，跟你确认上课时间和学费。`
+        : '资料已经收到了。我会在 48 小时内通过 WhatsApp 或电邮联系你，跟你确认上课时间和学费。'),
       again: '再填一份',
     },
   },
   footer: { rights: (y) => `© ${y} Kangyan` },
   labels: {
     lessonTypes: { private: '一对一', group: '小组课' },
+    enquirers: { parent: '家长', student: '学生本人' },
     subjects: { Physics: '物理', Chemistry: '化学', Biology: '生物', Science: '科学', Mathematics: '数学' },
     levelGroups: { uec: '独中（统考）', kssm: '国中（SPM）', igcse: '国际学校（IGCSE）', other: '其他' },
     levels: {
