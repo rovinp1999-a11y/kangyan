@@ -225,6 +225,56 @@ textarea.wz__input { resize: vertical; min-height: 0; font-size: 1rem; }
 .wz__loc .wz__input { margin-top: 0; }
 .wz__hint { display: block; margin-top: 6px; font-size: .8rem; color: var(--muted); }
 
+
+/* ----------------------------- Language gate ----------------------------- */
+.stage--gate { min-height: calc(100vh - 64px); min-height: calc(100dvh - 64px); align-items: center; }
+.stage__inner--gate { display: flex; justify-content: center; }
+.gate { width: 100%; max-width: 520px; }
+.gate__card { background: var(--white); border: 2.5px solid var(--ink); border-radius: var(--radius-lg); box-shadow: 10px 10px 0 var(--yellow); padding: clamp(22px, 4vw, 36px); text-align: center; animation: wzIn .35s cubic-bezier(.2,.8,.2,1); }
+.gate .eyebrow { margin-bottom: 16px; }
+.gate__title { font-size: clamp(2rem, 6vw, 2.8rem); letter-spacing: -0.03em; }
+.gate__title [lang="zh-Hans"] { font-family: var(--cjk); letter-spacing: 0; }
+.gate__sub { margin-top: 8px; color: var(--ink-soft); font-size: 1.05rem; }
+.gate__dot { margin: 0 8px; color: var(--muted); }
+.gate__opts { display: grid; gap: 12px; margin-top: 24px; }
+.gate__opt { position: relative; font: inherit; display: grid; grid-template-columns: 1fr auto; grid-template-areas: "label arrow" "hint arrow"; align-items: center; text-align: left; gap: 2px 12px; padding: 18px 20px; min-height: 76px; border: 2px solid var(--ink); border-radius: var(--radius); background: var(--white); color: var(--ink); cursor: pointer; transition: transform .15s, box-shadow .15s, background .15s; }
+.gate__opt:hover { transform: translateY(-3px); box-shadow: 5px 5px 0 var(--ink); background: #FEF9C3; }
+.gate__opt:focus-visible { outline: 3px solid var(--purple); outline-offset: 3px; }
+.gate__label { grid-area: label; font-family: var(--ff-display); font-weight: 800; font-size: 1.45rem; line-height: 1.1; }
+.gate__opt--zh .gate__label { font-family: var(--cjk); font-weight: 700; }
+.gate__hint { grid-area: hint; font-size: .88rem; color: var(--muted); }
+.gate__opt svg { grid-area: arrow; width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; transition: transform .15s; }
+.gate__opt:hover svg { transform: translateX(3px); }
+.gate__note { margin-top: 18px; font-size: .82rem; color: var(--muted); }
+/* Keep the language card centred on every screen size (overrides the phone rule for .stage). */
+.stage.stage--gate { min-height: calc(100vh - 64px); min-height: calc(100dvh - 64px); align-items: center; }
+@media (max-width: 600px) {
+  .stage.stage--gate { padding: 24px 0; }
+  .gate__card { box-shadow: 6px 6px 0 var(--yellow); }
+}
+@media (prefers-reduced-motion: reduce) { .gate__card { animation: none; } }
+
+
+/* ----------------------------- Subjects summary (SEO) ----------------------------- */
+.seo { background: var(--white); border-top: 2px solid var(--ink); padding: clamp(28px, 4vw, 44px) 0; }
+.seo__inner { display: grid; grid-template-columns: .9fr 1.1fr; gap: 12px 40px; align-items: start; }
+.seo__title { grid-column: 1; font-size: clamp(1.15rem, 2vw, 1.4rem); line-height: 1.25; }
+.seo__intro { grid-column: 1; color: var(--muted); font-size: .92rem; line-height: 1.6; }
+.seo__groups { grid-column: 2; grid-row: 1 / span 2; display: grid; gap: 10px; }
+.seo__groups li { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; padding: 12px 14px; border: 1.5px solid var(--line); border-radius: 14px; background: var(--paper); font-size: .9rem; }
+.seo__groups strong { font-family: var(--ff-display); font-size: .98rem; }
+.seo__levels { color: var(--purple); font-weight: 600; font-size: .82rem; align-self: center; }
+.seo__subjects { grid-column: 1 / -1; color: var(--ink-soft); }
+:lang(zh) .seo__intro, :lang(zh) .seo__groups { line-height: 1.75; }
+@media (max-width: 860px) {
+  .seo__inner { grid-template-columns: 1fr; }
+  .seo__title, .seo__intro, .seo__groups { grid-column: 1; grid-row: auto; }
+}
+/* Static crawler text inside #root before React loads */
+.seo-fallback { max-width: 720px; margin: 40px auto; padding: 0 20px; font-family: var(--ff-text); color: var(--ink); line-height: 1.6; }
+.seo-fallback h1 { font-size: 1.6rem; margin-bottom: 10px; }
+.seo-fallback ul { margin: 12px 0; padding-left: 18px; list-style: disc; }
+
 /* ----------------------------- Footer ----------------------------- */
 .footer { border-top: 2px solid var(--ink); background: var(--paper); }
 .footer__inner { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 64px; font-size: .84rem; color: var(--muted); }

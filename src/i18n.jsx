@@ -9,8 +9,17 @@ const KEY = 'kangyan-lang'
 const en = {
   htmlLang: 'en',
   meta: {
-    title: 'Kangyan | UEC, SPM & IGCSE Science and Maths Tuition Enquiry',
-    description: 'Book Physics, Chemistry, Biology, Science or Maths tuition for Chinese independent schools (UEC Junior and Senior), SPM and IGCSE. Private 1-to-1 or group classes on weekday evenings. Reply within 48 hours.',
+    title: 'Private Science & Maths Tutor | UEC, SPM & IGCSE | Kangyan',
+    description: 'Private 1-to-1 and group tuition in Physics, Chemistry, Biology, Science and Maths for UEC (独中统考), SPM and IGCSE. Online across Malaysia. Enquire in a minute.',
+  },
+  seo: {
+    title: 'Private Science & Maths tutor for UEC, SPM and IGCSE',
+    intro: 'Private 1-to-1 and small-group tuition in Physics, Chemistry, Biology, Science and Mathematics. Online lessons across Malaysia, in-person lessons by arrangement, on weekday evenings.',
+    groups: [
+      { name: 'UEC (独中统考)', levels: 'Junior 1–3 · Senior 1–3', subjects: 'Physics, Chemistry, Biology, Science, Mathematics' },
+      { name: 'SPM / KSSM', levels: 'Form 1–5', subjects: 'Physics, Chemistry, Biology, Science, Mathematics' },
+      { name: 'IGCSE', levels: 'Year 10–11', subjects: 'Physics 0625, Chemistry 0620, Biology 0610, Mathematics 0580' },
+    ],
   },
   nav: { switchLabel: 'Language / 语言' },
   intro: {
@@ -115,8 +124,17 @@ const en = {
 const zh = {
   htmlLang: 'zh-Hans',
   meta: {
-    title: 'Kangyan｜独中统考、SPM、IGCSE 理科与数学补习',
-    description: '独中初中、高中（统考）、国中 SPM 和 IGCSE 的物理、化学、生物、科学、数学补习。平日晚上有一对一和小组课，填个简单资料，48 小时内回复你。',
+    title: '理科与数学私人补习老师｜独中统考、SPM、IGCSE｜Kangyan',
+    description: '物理、化学、生物、科学、数学一对一私人补习与小组课，适合独中统考（初中、高中）、国中 SPM 和 IGCSE 学生。全马网课，平日晚上开课，一分钟完成咨询。',
+  },
+  seo: {
+    title: '独中统考、SPM、IGCSE 理科与数学私人补习',
+    intro: '物理、化学、生物、科学、数学的一对一私人补习和小组课。全马网课，面对面上课可另约，平日晚上开课。',
+    groups: [
+      { name: '独中统考（UEC）', levels: '初一至初三 · 高一至高三', subjects: '物理、化学、生物、科学、数学' },
+      { name: '国中 SPM / KSSM', levels: '中一至中五', subjects: '物理、化学、生物、科学、数学' },
+      { name: 'IGCSE', levels: '十年级至十一年级', subjects: '物理 0625、化学 0620、生物 0610、数学 0580' },
+    ],
   },
   nav: { switchLabel: 'Language / 语言' },
   intro: {
@@ -251,8 +269,12 @@ export function shortRange(start, end, lang = 'en') {
   return x.p === y.p ? `${x.t}–${y.t} ${y.p}` : `${x.t} ${x.p}–${y.t} ${y.p}`
 }
 
+/** True on the Chinese entry page (/zh or /zh/), which search engines index separately. */
+export const onZhPath = () => /^\/zh\/?$/.test(window.location.pathname)
+
 function initialLang() {
   try {
+    if (onZhPath()) return 'zh'
     const q = new URLSearchParams(window.location.search).get('lang')
     if (q === 'zh' || q === 'en') return q
     const saved = localStorage.getItem(KEY)
@@ -270,13 +292,21 @@ export function LangProvider({ children }) {
   const setLang = (next) => {
     setLangState(next)
     try { localStorage.setItem(KEY, next) } catch { /* ignore */ }
-    // Keep a shareable URL: ?lang=zh for Chinese, clean URL for English.
+  }
+
+  // Keep the address bar clean: a shared ?lang=zh / ?lang=en link is read once
+  // (in initialLang) and then removed from the URL.
+  useEffect(() => {
     try {
       const url = new URL(window.location.href)
-      next === 'zh' ? url.searchParams.set('lang', 'zh') : url.searchParams.delete('lang')
-      window.history.replaceState(null, '', url)
+      const zhPath = onZhPath()
+      if (!url.searchParams.has('lang') && !zhPath) return
+      // Remember the language the link chose, so a refresh on the cleaned URL keeps it.
+      localStorage.setItem(KEY, lang)
+      url.searchParams.delete('lang')
+      window.history.replaceState(null, '', (zhPath ? '/' : url.pathname) + (url.search || '') + url.hash)
     } catch { /* ignore */ }
-  }
+  }, [])
 
   useEffect(() => {
     document.documentElement.lang = t.htmlLang

@@ -3,14 +3,57 @@ import Footer from './components/Footer.jsx'
 import Wizard from './components/Wizard.jsx'
 import MoleculeField from './components/MoleculeField.jsx'
 import Doodles from './components/Doodles.jsx'
+import LanguageGate from './components/LanguageGate.jsx'
 import AdminPage from './admin/AdminPage.jsx'
-import { LangProvider, useLang } from './i18n.jsx'
+import { useState } from 'react'
+import { LangProvider, useLang, onZhPath } from './i18n.jsx'
+import SeoStrip from './components/SeoStrip.jsx'
+
+// Ask for a language once per visit (tab session). A refresh mid-enquiry doesn't ask
+// again, and links that already say ?lang=en / ?lang=zh skip the question.
+const PICKED_KEY = 'kangyan-lang-picked'
+function needsLanguageChoice() {
+  try {
+    const q = new URLSearchParams(window.location.search).get('lang')
+    if (q === 'en' || q === 'zh' || onZhPath()) {
+      sessionStorage.setItem(PICKED_KEY, '1') // the link chose; don't ask after a refresh either
+      return false
+    }
+    return sessionStorage.getItem(PICKED_KEY) !== '1'
+  } catch {
+    return true
+  }
+}
 
 // Two routes only: "/" (enquiry page) and "/admin" (tutor dashboard).
 // vercel.json rewrites /admin to index.html so this works on Vercel.
 function EnquiryPage() {
-  const { t } = useLang()
+  const { t, lang, setLang } = useLang()
   const [a, hl, b] = t.intro.title
+  const [choosing, setChoosing] = useState(needsLanguageChoice)
+
+  const pick = (code) => {
+    setLang(code)
+    try { sessionStorage.setItem(PICKED_KEY, '1') } catch { /* ignore */ }
+    setChoosing(false)
+  }
+
+  if (choosing) {
+    return (
+      <>
+        <main className="stage stage--gate">
+          <MoleculeField />
+          <Doodles />
+          <div className="container stage__inner stage__inner--gate">
+            <LanguageGate onPick={pick} current={lang} />
+          </div>
+        </main>
+        <SeoStrip headingLevel={1} />
+        <Footer />
+      </>
+    )
+  }
+
   return (
     <>
       <Nav />
@@ -26,6 +69,7 @@ function EnquiryPage() {
           <Wizard />
         </div>
       </main>
+      <SeoStrip headingLevel={2} />
       <Footer />
     </>
   )
