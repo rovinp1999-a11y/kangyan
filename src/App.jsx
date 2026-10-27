@@ -7,6 +7,7 @@ import Faq from './components/Faq.jsx'
 import Helix from './components/Helix.jsx'
 import Footer from './components/Footer.jsx'
 import AdminPage from './admin/AdminPage.jsx'
+import { LangProvider } from './i18n.jsx'
 
 // Two routes only: "/" (public site) and "/admin" (tutor dashboard).
 // vercel.json rewrites /admin to index.html so this works on Vercel.
@@ -14,7 +15,7 @@ export default function App() {
   if (window.location.pathname.replace(/\/+$/, '') === '/admin') return <AdminPage />
 
   return (
-    <>
+    <LangProvider>
       <Nav />
       <main>
         <Hero />
@@ -25,6 +26,6 @@ export default function App() {
         <Faq />
       </main>
       <Footer />
-    </>
+    </LangProvider>
   )
 }

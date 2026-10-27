@@ -27,8 +27,9 @@
   --container: 1120px;
   --shadow: 0 30px 70px -30px rgba(21, 18, 28, 0.4);
 
-  --ff-display: 'Bricolage Grotesque', system-ui, sans-serif;
-  --ff-text: 'Inter', system-ui, sans-serif;
+  --cjk: 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans SC', 'Microsoft YaHei', 'Source Han Sans SC', sans-serif;
+  --ff-display: 'Bricolage Grotesque', system-ui, var(--cjk);
+  --ff-text: 'Inter', system-ui, var(--cjk);
 }
 
 /* ----------------------------- Reset ----------------------------- */
@@ -362,6 +363,31 @@ h1, h2, h3, h4 { font-family: var(--ff-display); font-weight: 700; line-height: 
   .art-bubble, .art-vapour { animation: none !important; opacity: .7; }
   .subj:hover .elem, .hero__art:hover { transform: none; }
   .stagger > * { opacity: 1; transform: none; transition: none; }
+}
+
+
+/* ----------------------------- Language switch + Chinese tweaks ----------------------------- */
+.lang { display: inline-flex; padding: 3px; border: 2px solid var(--ink); border-radius: 999px; background: var(--white); }
+.lang button { font: inherit; font-size: .8rem; font-weight: 700; min-width: 40px; height: 30px; padding: 0 10px; border: 0; border-radius: 999px; background: none; color: var(--ink); cursor: pointer; transition: background .15s, color .15s; }
+.lang button.is-on { background: var(--ink); color: var(--white); }
+.lang button:not(.is-on):hover { background: rgba(21,18,28,.07); }
+.lang button:focus-visible { outline: 3px solid var(--purple); outline-offset: 2px; }
+.lang button[lang="zh-Hans"] { font-family: var(--cjk); }
+
+/* Chinese reads better with no negative tracking and a little more leading */
+:lang(zh) h1, :lang(zh) h2, :lang(zh) h3 { letter-spacing: 0; line-height: 1.25; }
+:lang(zh) .hero__title { letter-spacing: 0; line-height: 1.2; }
+:lang(zh) body, :lang(zh) .hero__lede, :lang(zh) .subj p, :lang(zh) .step p, :lang(zh) .faq details p { line-height: 1.75; }
+:lang(zh) .kicker { letter-spacing: .2em; }
+:lang(zh) .eyebrow, :lang(zh) .subj__syll { letter-spacing: .06em; }
+:lang(zh) .hl { background: linear-gradient(transparent 64%, var(--yellow) 64%, var(--yellow) 94%, transparent 94%); }
+
+@media (max-width: 760px) {
+  .nav__inner { gap: 10px; }
+  .lang button { min-width: 36px; padding: 0 8px; }
+}
+@media (max-width: 360px) {
+  .nav__cta { padding: 8px 12px; }
 }
 
 /* ----------------------------- Admin ----------------------------- */

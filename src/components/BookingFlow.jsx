@@ -3,9 +3,12 @@ import Reveal from './Reveal.jsx'
 import Availability from './Availability.jsx'
 import Enquire from './Enquire.jsx'
 import { CONTACT } from '../data.js'
+import { useLang } from '../i18n.jsx'
 
 // Timetable + enquiry form side by side, plus a sticky mobile CTA.
 export default function BookingFlow() {
+  const { t } = useLang()
+  const b = t.book
   const [slots, setSlots] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
@@ -54,9 +57,9 @@ export default function BookingFlow() {
     <section className="section book" id="enquire">
       <div className="container">
         <Reveal className="sec-head">
-          <p className="kicker">Enquire</p>
-          <h2>Check my timetable, then send an enquiry</h2>
-          <p>Choosing times is optional. Enquiring is free and doesn't commit you to anything.</p>
+          <p className="kicker">{b.kicker}</p>
+          <h2>{b.title}</h2>
+          <p>{b.sub}</p>
         </Reveal>
 
         <div className="book__grid">
@@ -64,9 +67,9 @@ export default function BookingFlow() {
           <div className="book__form" id="enquire-form" ref={formCol}>
             <Enquire selectedSlots={selectedSlots} onRemoveSlot={remove} onSubmitted={() => setSelected(new Set())} />
             <p className="book__contact">
-              Rather message directly?{' '}
+              {b.contact}{' '}
               <a href={CONTACT.whatsapp} target="_blank" rel="noopener noreferrer">WhatsApp</a> ·{' '}
-              <a href={`mailto:${CONTACT.email}`}>Email</a> ·{' '}
+              <a href={`mailto:${CONTACT.email}`}>{b.email}</a> ·{' '}
               <a href={CONTACT.instagram} target="_blank" rel="noopener noreferrer">Instagram</a>
             </p>
           </div>
@@ -75,7 +78,7 @@ export default function BookingFlow() {
 
       <div className={`sticky-cta ${showCta ? 'is-on' : ''}`} aria-hidden={!showCta}>
         <a href="#enquire-form" className="btn btn--accent btn--full" tabIndex={showCta ? 0 : -1}>
-          {n ? `Send enquiry · ${n} time${n > 1 ? 's' : ''} picked` : 'Send an enquiry'}
+          {n ? b.stickyN(n) : b.sticky}
         </a>
       </div>
     </section>

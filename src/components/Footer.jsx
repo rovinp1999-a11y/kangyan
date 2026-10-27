@@ -1,13 +1,15 @@
 import { CONTACT } from '../data.js'
+import { useLang } from '../i18n.jsx'
 
 export default function Footer() {
+  const { t } = useLang()
   const year = new Date().getFullYear()
   return (
     <footer className="footer">
       <div className="container footer__inner">
         <div>
           <a href="#home" className="nav__logo">Kangyan<span className="dot" aria-hidden="true" /></a>
-          <p className="footer__tag">Science and Maths tuition for Form 1–5 (KSSM), SPM and IGCSE · Online and in-person</p>
+          <p className="footer__tag">{t.footer.tag}</p>
         </div>
         <div className="footer__social">
           <a href={CONTACT.whatsapp} target="_blank" rel="noopener noreferrer" aria-label="WhatsApp">
@@ -22,7 +24,7 @@ export default function Footer() {
         </div>
       </div>
       <div className="container footer__base">
-        <span>© {year} Kangyan. All rights reserved.</span>
+        <span>{t.footer.rights(year)}</span>
       </div>
     </footer>
   )

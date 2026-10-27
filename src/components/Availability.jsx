@@ -1,41 +1,32 @@
-import { WEEKDAYS, WEEKDAYS_SHORT, formatRange } from '../../shared/constants.js'
-
-// '16:00','18:00' → '4–6 PM'; '10:00','12:00' → '10 AM–12 PM'; keeps minutes when not :00.
-function shortRange(start, end) {
-  const part = (t) => {
-    const [h, m] = t.split(':').map(Number)
-    const h12 = h % 12 === 0 ? 12 : h % 12
-    return { t: m ? `${h12}:${String(m).padStart(2, '0')}` : `${h12}`, p: h >= 12 ? 'PM' : 'AM' }
-  }
-  const a = part(start)
-  const b = part(end)
-  return a.p === b.p ? `${a.t}–${b.t} ${b.p}` : `${a.t} ${a.p}–${b.t} ${b.p}`
-}
+import { useLang, shortRange } from '../i18n.jsx'
 
 // Weekly timetable: one row per day, slots as tappable chips.
 export default function Availability({ slots, selected, onToggle, loading, error }) {
+  const { t, lang } = useLang()
+  const L = t.labels
   const count = selected.size
   return (
     <div className="panel" id="timetable">
-      <h3 className="panel__step"><span>1</span>Pick your times <small>optional</small></h3>
+      <h3 className="panel__step"><span>1</span>{t.tt.title} <small>{t.tt.optional}</small></h3>
 
-      {error && <p className="tt__note">The timetable didn't load. You can still send an enquiry and I'll suggest times.</p>}
+      {error && <p className="tt__note">{t.tt.error}</p>}
 
       <div className="tt" aria-busy={loading}>
-        {WEEKDAYS_SHORT.map((d, i) => {
+        {L.weekdaysShort.map((d, i) => {
           const day = slots.filter((s) => s.weekday === i)
           return (
-            <div className="tt__row" key={d}>
-              <span className="tt__day" title={WEEKDAYS[i]}>{d}</span>
+            <div className="tt__row" key={i}>
+              <span className="tt__day" title={L.weekdays[i]}>{d}</span>
               <div className="tt__slots">
                 {loading ? (
-                  <span className="tt__empty">Loading…</span>
+                  <span className="tt__empty">{t.tt.loading}</span>
                 ) : day.length === 0 ? (
-                  <span className="tt__empty">No slots</span>
+                  <span className="tt__empty">{t.tt.none}</span>
                 ) : (
                   day.map((s) => {
                     const taken = s.status === 'taken'
                     const on = selected.has(s.id)
+                    const label = shortRange(s.start, s.end, lang)
                     return (
                       <button
                         type="button"
@@ -43,10 +34,10 @@ export default function Availability({ slots, selected, onToggle, loading, error
                         className={`slot ${on ? 'is-selected' : ''} ${taken ? 'is-taken' : ''}`}
                         disabled={taken}
                         aria-pressed={on}
-                        aria-label={`${WEEKDAYS[i]} ${formatRange(s.start, s.end)}${taken ? ', taken' : ''}`}
+                        aria-label={`${L.weekdays[i]} ${label}${taken ? `, ${t.tt.taken}` : ''}`}
                         onClick={() => onToggle(s.id)}
                       >
-                        {shortRange(s.start, s.end)}
+                        {label}
                       </button>
                     )
                   })
@@ -58,8 +49,8 @@ export default function Availability({ slots, selected, onToggle, loading, error
       </div>
 
       <p className="tt__foot">
-        <span>{count ? `${count} time${count > 1 ? 's' : ''} selected` : 'Tap any times that work. Pick as many as you like.'}</span>
-        <span className="tt__legend"><i className="lg lg--sel" />Selected <i className="lg lg--taken" />Taken</span>
+        <span>{count ? t.tt.selected(count) : t.tt.hint}</span>
+        <span className="tt__legend"><i className="lg lg--sel" />{t.tt.legendSel} <i className="lg lg--taken" />{t.tt.legendTaken}</span>
       </p>
     </div>
   )
