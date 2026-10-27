@@ -1,74 +1,66 @@
-import Reveal from './Reveal.jsx'
-import { WEEKDAYS, formatRange } from '../../shared/constants.js'
+import { WEEKDAYS, WEEKDAYS_SHORT, formatRange } from '../../shared/constants.js'
 
-// Weekly availability grid. Students tick the open slots they prefer; the
-// selection is passed down to the enquiry form.
+// '16:00','18:00' → '4–6 PM'; '10:00','12:00' → '10 AM–12 PM'; keeps minutes when not :00.
+function shortRange(start, end) {
+  const part = (t) => {
+    const [h, m] = t.split(':').map(Number)
+    const h12 = h % 12 === 0 ? 12 : h % 12
+    return { t: m ? `${h12}:${String(m).padStart(2, '0')}` : `${h12}`, p: h >= 12 ? 'PM' : 'AM' }
+  }
+  const a = part(start)
+  const b = part(end)
+  return a.p === b.p ? `${a.t}–${b.t} ${b.p}` : `${a.t} ${a.p}–${b.t} ${b.p}`
+}
+
+// Weekly timetable: one row per day, slots as tappable chips.
 export default function Availability({ slots, selected, onToggle, loading, error }) {
-  const byDay = WEEKDAYS.map((_, d) => slots.filter((s) => s.weekday === d))
   const count = selected.size
-
   return (
-    <section className="section availability" id="availability" data-spotlight>
-      <div className="container">
-        <Reveal as="div" className="section-head">
-          <div>
-            <p className="label" style={{ '--accent': 'var(--yellow)' }}>Weekly Timetable</p>
-            <h2 className="section-head__title">Pick the times that suit you.</h2>
-          </div>
-          <p className="section-sub">
-            These are my regular weekly slots. Tick one or more you'd prefer, then send an
-            enquiry — I'll confirm the final time with you.
-          </p>
-        </Reveal>
+    <div className="panel" id="timetable">
+      <h3 className="panel__step"><span>1</span>Pick times that suit you <small>optional</small></h3>
 
-        {error && <p className="availability__note">Couldn't load the timetable right now. You can still send an enquiry below.</p>}
+      {error && <p className="tt__note">Couldn't load the timetable. You can still send an enquiry.</p>}
 
-        <Reveal className="week" aria-busy={loading}>
-          {byDay.map((daySlots, d) => (
-            <div className="day" key={d}>
-              <h3 className="day__name">{WEEKDAYS[d]}</h3>
-              <div className="day__list">
-                {loading && daySlots.length === 0 && <span className="day__empty">Loading…</span>}
-                {!loading && daySlots.length === 0 && <span className="day__empty">No slots</span>}
-                {daySlots.map((s) => {
-                  const taken = s.status === 'taken'
-                  const on = selected.has(s.id)
-                  return (
-                    <button
-                      type="button"
-                      key={s.id}
-                      className={`slot ${on ? 'is-selected' : ''} ${taken ? 'is-taken' : ''}`}
-                      disabled={taken}
-                      aria-pressed={on}
-                      onClick={() => onToggle(s.id)}
-                      title={taken ? 'Already taken' : on ? 'Click to unselect' : 'Click to select'}
-                    >
-                      <span>{formatRange(s.start, s.end)}</span>
-                      <span className="slot__badge">{taken ? 'Taken' : on ? '✓' : 'Open'}</span>
-                    </button>
-                  )
-                })}
+      <div className="tt" aria-busy={loading}>
+        {WEEKDAYS_SHORT.map((d, i) => {
+          const day = slots.filter((s) => s.weekday === i)
+          return (
+            <div className="tt__row" key={d}>
+              <span className="tt__day" title={WEEKDAYS[i]}>{d}</span>
+              <div className="tt__slots">
+                {loading ? (
+                  <span className="tt__empty">Loading…</span>
+                ) : day.length === 0 ? (
+                  <span className="tt__empty">No slots</span>
+                ) : (
+                  day.map((s) => {
+                    const taken = s.status === 'taken'
+                    const on = selected.has(s.id)
+                    return (
+                      <button
+                        type="button"
+                        key={s.id}
+                        className={`slot ${on ? 'is-selected' : ''} ${taken ? 'is-taken' : ''}`}
+                        disabled={taken}
+                        aria-pressed={on}
+                        aria-label={`${WEEKDAYS[i]} ${formatRange(s.start, s.end)}${taken ? ', taken' : ''}`}
+                        onClick={() => onToggle(s.id)}
+                      >
+                        {shortRange(s.start, s.end)}
+                      </button>
+                    )
+                  })
+                )}
               </div>
             </div>
-          ))}
-        </Reveal>
-
-        <Reveal className="availability__bar">
-          <div className="availability__legend">
-            <span className="lg-open">Open</span>
-            <span className="lg-sel">Selected</span>
-            <span className="lg-taken">Taken</span>
-          </div>
-          <div className="availability__cta">
-            <span className="availability__count">
-              {count === 0 ? 'No slot selected yet — that\'s fine, you can stay flexible.' : `${count} slot${count > 1 ? 's' : ''} selected`}
-            </span>
-            <a href="#enquire" className="btn btn--accent" data-magnetic>
-              Continue to enquiry <span className="arrow">↓</span>
-            </a>
-          </div>
-        </Reveal>
+          )
+        })}
       </div>
-    </section>
+
+      <p className="tt__foot">
+        <span>{count ? `${count} time${count > 1 ? 's' : ''} selected` : 'Tap a time to select it.'}</span>
+        <span className="tt__legend"><i className="lg lg--sel" />Selected <i className="lg lg--taken" />Taken</span>
+      </p>
+    </div>
   )
 }

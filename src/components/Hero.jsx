@@ -1,51 +1,36 @@
 import { HeroArt } from './SciArt.jsx'
 
-// Split a word into animated character spans. `start` offsets the entrance delay
-// so letters cascade continuously across both headline lines.
-function chars(text, start = 0) {
-  return [...text].map((c, i) => (
-    <span className="ch" key={i} style={{ animationDelay: `${(start + i) * 0.045 + 0.15}s` }}>
-      <span>{c}</span>
-    </span>
-  ))
-}
+const TRUST = ['Reply within 48 hours', 'Online or in-person', 'Exam-focused practice']
 
 export default function Hero() {
   return (
     <section className="hero" id="home">
       <div className="container hero__grid">
         <div className="hero__text">
-          <p className="label hero__eyebrow" style={{ '--accent': 'var(--purple)' }}>
-            Science &amp; Maths Tutor · SPM · IGCSE
-          </p>
-          <h1 className="hero__headline" aria-label="Science & Maths">
-            <span className="line" aria-hidden="true">{chars('SCIENCE', 0)}</span>
-            <span className="line line--2" aria-hidden="true">
-              {chars('&', 7)} <span className="hero__star">{chars('MATHS', 8)}</span>
-            </span>
+          <p className="eyebrow"><span className="pulse" aria-hidden="true" />Taking new students · SPM &amp; IGCSE</p>
+          <h1 className="hero__title">
+            Science &amp; Maths tuition that <span className="hl">makes sense</span>.
           </h1>
-
-          <div className="hero__sub">
-            <p className="hero__lede">
-              I'm <strong>Kangyan</strong> — I tutor Physics, Chemistry, Biology, Science
-              and Mathematics for Form 1–5, SPM and IGCSE students. Clear explanations,
-              exam-focused practice, real progress.
-            </p>
-          </div>
-
+          <p className="hero__lede">
+            I'm <strong>Kangyan</strong>. I teach Physics, Chemistry, Biology, Science and
+            Mathematics for Form 1–5 — clear explanations plus past-year practice, one-to-one
+            or in small groups.
+          </p>
           <div className="hero__actions">
-            <a href="#availability" className="btn btn--accent btn--lg" data-magnetic>
-              Check my availability <span className="arrow">→</span>
-            </a>
-            <a href="#enquire" className="btn btn--ghost btn--lg" data-magnetic>Send an enquiry</a>
+            <a href="#enquire" className="btn btn--accent">Send an enquiry <span aria-hidden="true">→</span></a>
+            <a href="#timetable" className="btn btn--ghost">See free slots</a>
           </div>
+          <ul className="hero__trust">
+            {TRUST.map((t) => (
+              <li key={t}>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6L9 17l-5-5" /></svg>
+                {t}
+              </li>
+            ))}
+          </ul>
         </div>
-
-        <div className="hero__media">
-          <span className="hero__tag">Taking new students</span>
-          <div className="hero__photo" data-tilt="7">
-            <HeroArt />
-          </div>
+        <div className="hero__art" aria-hidden="true">
+          <HeroArt />
         </div>
       </div>
     </section>

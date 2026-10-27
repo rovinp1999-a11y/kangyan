@@ -1,10 +1,7 @@
-import Effects from './Effects.jsx'
 import Nav from './components/Nav.jsx'
 import Hero from './components/Hero.jsx'
-import Marquee from './components/Marquee.jsx'
 import Subjects from './components/Subjects.jsx'
-import About from './components/About.jsx'
-import Testimonials from './components/Testimonials.jsx'
+import How from './components/How.jsx'
 import BookingFlow from './components/BookingFlow.jsx'
 import Footer from './components/Footer.jsx'
 import AdminPage from './admin/AdminPage.jsx'
@@ -16,14 +13,11 @@ export default function App() {
 
   return (
     <>
-      <Effects />
       <Nav />
       <main>
         <Hero />
-        <Marquee />
         <Subjects />
-        <About />
-        <Testimonials />
+        <How />
         <BookingFlow />
       </main>
       <Footer />

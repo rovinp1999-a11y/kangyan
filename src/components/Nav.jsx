@@ -2,13 +2,11 @@ import { useEffect, useState } from 'react'
 
 const LINKS = [
   { href: '#subjects', label: 'Subjects' },
-  { href: '#about', label: 'About' },
-  { href: '#testimonials', label: 'Reviews' },
-  { href: '#availability', label: 'Availability' },
+  { href: '#how', label: 'How it works' },
+  { href: '#timetable', label: 'Timetable' },
 ]
 
 export default function Nav() {
-  const [open, setOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
 
   useEffect(() => {
@@ -18,40 +16,16 @@ export default function Nav() {
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
 
-  // Lock body scroll while the mobile drawer is open.
-  useEffect(() => {
-    document.body.style.overflow = open ? 'hidden' : ''
-    return () => { document.body.style.overflow = '' }
-  }, [open])
-
-  const close = () => setOpen(false)
-
   return (
-    <header className={`nav ${scrolled ? 'is-scrolled' : ''}`} id="nav">
+    <header className={`nav ${scrolled ? 'is-scrolled' : ''}`}>
       <div className="container nav__inner">
-        <a href="#home" className="nav__logo" aria-label="Kangyan home" onClick={close}>
-          Kangyan<span className="dot" aria-hidden="true"></span>
+        <a href="#home" className="nav__logo" aria-label="Kangyan home">
+          Kangyan<span className="dot" aria-hidden="true" />
         </a>
-
-        <nav className={`nav__links ${open ? 'is-open' : ''}`} aria-label="Primary">
-          {LINKS.map((l) => (
-            <a key={l.href} href={l.href} onClick={close}>
-              {l.label}
-            </a>
-          ))}
-          <a href="#enquire" className="nav__cta" onClick={close} data-magnetic>
-            Enquire
-          </a>
+        <nav className="nav__links" aria-label="Primary">
+          {LINKS.map((l) => <a key={l.href} href={l.href}>{l.label}</a>)}
         </nav>
-
-        <button
-          className={`nav__toggle ${open ? 'is-open' : ''}`}
-          aria-label={open ? 'Close menu' : 'Open menu'}
-          aria-expanded={open}
-          onClick={() => setOpen((v) => !v)}
-        >
-          <span></span><span></span><span></span>
-        </button>
+        <a href="#enquire" className="btn btn--accent btn--sm">Enquire</a>
       </div>
     </header>
   )
