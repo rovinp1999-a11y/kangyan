@@ -73,11 +73,11 @@ export function draftMessage(r) {
   const group = LEVEL_GROUPS.find((g) => g.levels.includes(r.level))?.key
   const level = zh
     ? `${L.levels[r.level] || r.level}${{ uec: '（独中）', kssm: '（国中）', igcse: '（IGCSE）' }[group] || ''}`
-    : r.level
+    : `${L.levels[r.level] || r.level}${{ uec: ' (UEC)', igcse: ' (IGCSE)' }[group] || ''}`
   const subjects = r.subjects.map((x) => (zh ? L.subjects[x] : x) || x).join(zh ? '、' : ', ')
   const slots = (r.preferred_slots || []).map((x) =>
     x.weekday != null && x.start ? `${L.weekdaysShort[x.weekday]} ${shortRange(x.start, x.end, zh ? 'zh' : 'en')}` : x.label)
-  const times = slots.length ? slots.join(zh ? '、' : ', ') : zh ? '时间都可以' : 'flexible'
+  const times = slots.length ? slots.join(zh ? '、' : ', ') : zh ? '时间都可以' : 'Flexible'
   const type = zh ? (r.lesson_type === 'group' ? '小组课' : '一对一私人课') : LESSON_TYPE_LABEL[r.lesson_type] || LESSON_TYPE_LABEL.private
   const fmt = L.formats[r.format] || L.formats.either
   const where = r.location ? (zh ? `（${r.location}）` : ` (${r.location})`) : ''
@@ -97,16 +97,16 @@ export function draftMessage(r) {
     ].join('\n')
   }
   return [
-    `Hi! This is Kangyan, the Science & Maths tutor. Thank you for your tuition enquiry for ${first}.`,
+    `Hi, this is Kangyan, the Science and Maths tutor. Thanks for your enquiry about tuition for ${first}!`,
     '',
-    "Here's what I received:",
-    `• ${type}`,
-    `• ${level}`,
-    `• Subjects: ${subjects}`,
-    `• Preferred time: ${times}`,
+    "Here's a quick summary of what you sent:",
+    `• Class: ${type}`,
+    `• Level: ${level}`,
+    `• Subject${r.subjects.length > 1 ? 's' : ''}: ${subjects}`,
+    `• Preferred time${slots.length > 1 ? 's' : ''}: ${times}`,
     `• Lessons: ${fmt}${where}`,
     '',
-    "I'd love to confirm a lesson time with you and share the fees. When is a good time to chat?",
+    "I'd be happy to arrange a time for the first lesson and let you know the fees. When would be a good time to chat?",
   ].join('\n')
 }
 
