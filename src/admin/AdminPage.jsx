@@ -139,6 +139,7 @@ const ICONS = {
   trash: 'M3 6h18 M8 6V4h8v2 M19 6l-1 14H6L5 6',
   sort: 'M3 6h18 M6 12h12 M10 18h4',
   plus: 'M12 5v14 M5 12h14',
+  school: 'M3 9l9-5 9 5-9 5-9-5z M7 11.2V16c0 1.4 2.2 3 5 3s5-1.6 5-3v-4.8',
   pin: 'M12 21s-7-6.2-7-11.5A7 7 0 0112 2.5a7 7 0 017 7C19 14.8 12 21 12 21z M12 12a2.5 2.5 0 100-5 2.5 2.5 0 000 5z',
 }
 
@@ -310,6 +311,9 @@ function EnquiryCard({ r, onStatus, notify }) {
         <span className="tag-f">{FORMAT_LABEL[r.format] || r.format}</span>
       </div>
 
+      {r.school && (
+        <p className="enq__loc enq__school"><Icon name="school" />{r.school}</p>
+      )}
       {r.location && (
         <p className="enq__loc"><Icon name="pin" />{r.location}</p>
       )}
@@ -363,7 +367,7 @@ function EnquiriesTab({ rows, setRows, onAuthError, notify }) {
     const list = rows.filter((r) => {
       if (filter !== 'all' && r.status !== filter) return false
       if (!needle) return true
-      return [r.student_name, r.email, r.phone, r.level, r.message, r.location, LESSON_TYPE_LABEL[r.lesson_type], ENQUIRER_LABEL[r.enquirer], ...r.subjects]
+      return [r.student_name, r.email, r.phone, r.level, r.school, r.message, r.location, LESSON_TYPE_LABEL[r.lesson_type], ENQUIRER_LABEL[r.enquirer], ...r.subjects]
         .filter(Boolean)
         .some((v) => v.toLowerCase().includes(needle))
     })

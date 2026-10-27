@@ -3,17 +3,18 @@ import { SUBJECTS, LEVEL_GROUPS, LEVELS, LESSON_TYPES, ENQUIRERS, slotFits } fro
 import { useLang, shortRange } from '../i18n.jsx'
 import { confettiBurst } from '../confetti.js'
 import { subjectTiles } from '../data.js'
+import SchoolPicker from './SchoolPicker.jsx'
 
 // One-question-at-a-time enquiry flow:
-// parent or student → name → private/group → level → subjects → times (filtered by class type)
+// parent or student → name → private/group → level → school → subjects → times (filtered by class type)
 // → online/in person → contact + note → done.
-const STEPS = ['who', 'name', 'type', 'level', 'subjects', 'times', 'format', 'contact']
+const STEPS = ['who', 'name', 'type', 'level', 'school', 'subjects', 'times', 'format', 'contact']
 const at = (id) => STEPS.indexOf(id)
 const DRAFT_KEY = 'kangyan-enquiry-draft'
 const EMAIL_RE = /^[^\s@?&=]+@[^\s@?&=]+\.[^\s@?&=]+$/ // same rule as the server
 // Server error code → wizard step to send the student back to.
-const CODE_STEP = { enquirer: 'who', name: 'name', lessonType: 'type', level: 'level', subjects: 'subjects', format: 'format', location: 'format', phone: 'contact', email: 'contact', contact: 'contact' }
-const EMPTY = { enquirer: '', name: '', lessonType: '', level: '', subjects: [], slots: [], format: '', location: '', phone: '', email: '', message: '', website: '' }
+const CODE_STEP = { enquirer: 'who', name: 'name', lessonType: 'type', level: 'level', school: 'school', subjects: 'subjects', format: 'format', location: 'format', phone: 'contact', email: 'contact', contact: 'contact' }
+const EMPTY = { enquirer: '', name: '', lessonType: '', level: '', school: '', subjects: [], slots: [], format: '', location: '', phone: '', email: '', message: '', website: '' }
 
 const loadDraft = () => {
   try {
@@ -28,6 +29,7 @@ const loadDraft = () => {
         name: s(r.name, 80),
         lessonType: LESSON_TYPES.includes(r.lessonType) ? r.lessonType : '',
         level: LEVELS.includes(r.level) ? r.level : '',
+        school: s(r.school, 160),
         subjects: Array.isArray(r.subjects) ? r.subjects.filter((x) => SUBJECTS.includes(x)) : [],
         slots: Array.isArray(r.slots) ? r.slots.filter((x) => Number.isInteger(x)) : [],
         format: ['online', 'in-person', 'either'].includes(r.format) ? r.format : '',
@@ -51,6 +53,7 @@ const stepValid = (d) => ({
   name: d.name.trim().length >= 2,
   type: !!d.lessonType,
   level: !!d.level,
+  school: d.school.trim().length >= 2,
   subjects: d.subjects.length > 0,
   times: true,
   format: !!d.format && (d.format !== 'in-person' || d.location.trim().length >= 2), // 2 so 蕉赖 counts
@@ -196,7 +199,7 @@ export default function Wizard() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: data.name, email, phone, level: data.level, subjects: data.subjects,
+          name: data.name, email, phone, level: data.level, school: data.school.trim(), subjects: data.subjects,
           format: data.format || 'either', lessonType: data.lessonType, message: data.message,
           location: data.format === 'online' ? '' : data.location.trim(),
           lang,
@@ -343,6 +346,15 @@ export default function Wizard() {
         </>
       )
       break
+    case 'school':
+      body = (
+        <>
+          <h2 tabIndex={-1}>{w.school.q(name, data.enquirer)}</h2>
+          <p className="wz__help">{w.school.help}</p>
+          <SchoolPicker value={data.school} onChange={(v) => set('school', v)} t={w.school} typeLabels={L.schoolTypes} lang={lang} label={w.school.q(name, data.enquirer)} />
+        </>
+      )
+      break
     case 'subjects':
       body = (
         <>
@@ -453,6 +465,7 @@ export default function Wizard() {
         { label: L.enquirers[data.enquirer] || '', to: at('who') },
         { label: typeLabel, to: at('type') },
         { label: L.levels[data.level] || data.level, to: at('level') },
+        { label: data.school.trim(), to: at('school') },
         { label: data.subjects.map((s) => L.subjects[s]).join(' · '), to: at('subjects') },
         { label: pickedSlots.length ? w.times.picked(pickedSlots.length) : w.contact.flexible, to: at('times') },
         { label: (L.formats[data.format] || L.formats.either) + (data.format !== 'online' && data.location.trim() ? ` · ${data.location.trim()}` : ''), to: at('format') },

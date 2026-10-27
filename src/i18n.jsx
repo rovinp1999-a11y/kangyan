@@ -18,7 +18,7 @@ const en = {
     groups: [
       { name: 'UEC (独中统考)', levels: 'Junior 1–3 · Senior 1–3', subjects: 'Physics, Chemistry, Biology, Science, Mathematics' },
       { name: 'SPM / KSSM', levels: 'Form 1–5', subjects: 'Physics, Chemistry, Biology, Science, Mathematics' },
-      { name: 'IGCSE', levels: 'Year 10–11', subjects: 'Physics 0625, Chemistry 0620, Biology 0610, Mathematics 0580' },
+      { name: 'IGCSE', levels: 'Year 7–11', subjects: 'Physics 0625, Chemistry 0620, Biology 0610, Mathematics 0580' },
     ],
   },
   nav: { switchLabel: 'Language / 语言' },
@@ -40,6 +40,7 @@ const en = {
       name: "Please enter the student's name.",
       lessonType: 'Please choose 1-to-1 or a group class.',
       level: 'Please choose a level.',
+      school: 'Please tell me the school.',
       subjects: 'Please choose at least one subject.',
       format: 'Please choose online or in person.',
       location: 'Please enter where lessons would be.',
@@ -70,6 +71,12 @@ const en = {
       allFull: "All slots are full at the moment. You can still enquire and I'll let you know when one opens.",
     },
     level: { q: (n, who) => (who === 'parent' ? `Which level is ${n} in?` : 'Which level are you in?'), help: 'Chinese independent school (UEC), national school (SPM) or IGCSE.' },
+    school: {
+      q: (n, who) => (who === 'parent' ? `Which school does ${n} go to?` : 'Which school do you go to?'),
+      help: "Start typing and pick from the list. If it isn't there, just type the full name.",
+      ph: 'e.g. Foon Yew, SMK Damansara Jaya, 循人',
+      noMatch: "Not on the list? That's fine. I'll use the name you typed.",
+    },
     subjects: { q: 'Which subjects do you need help with?', help: 'Pick one or more.' },
     times: {
       q: 'Which times suit you?',
@@ -118,12 +125,13 @@ const en = {
   labels: {
     lessonTypes: { private: 'Private 1-to-1', group: 'Group class' },
     enquirers: { parent: 'Parent', student: 'Student' },
+    schoolTypes: { dz: 'Independent', smjk: 'SMJK', gov: 'National', mrsm: 'MRSM', intl: 'International' },
     subjects: { Physics: 'Physics', Chemistry: 'Chemistry', Biology: 'Biology', Science: 'Science', Mathematics: 'Maths' },
     levelGroups: { uec: 'Chinese independent · UEC', kssm: 'National school · SPM', igcse: 'International · IGCSE', other: 'Other' },
     levels: {
       'UEC Junior 1': 'Junior 1', 'UEC Junior 2': 'Junior 2', 'UEC Junior 3': 'Junior 3',
       'UEC Senior 1': 'Senior 1', 'UEC Senior 2': 'Senior 2', 'UEC Senior 3': 'Senior 3',
-      'IGCSE Year 10': 'Year 10', 'IGCSE Year 11': 'Year 11',
+      'IGCSE Year 7': 'Year 7', 'IGCSE Year 8': 'Year 8', 'IGCSE Year 9': 'Year 9', 'IGCSE Year 10': 'Year 10', 'IGCSE Year 11': 'Year 11',
     },
     formats: { online: 'Online', 'in-person': 'In person', either: 'Online or in person' },
     weekdays: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
@@ -143,7 +151,7 @@ const zh = {
     groups: [
       { name: '独中统考（UEC）', levels: '初一至初三 · 高一至高三', subjects: '物理、化学、生物、科学、数学' },
       { name: '国中 SPM / KSSM', levels: '中一至中五', subjects: '物理、化学、生物、科学、数学' },
-      { name: 'IGCSE', levels: '十年级至十一年级', subjects: '物理 0625、化学 0620、生物 0610、数学 0580' },
+      { name: 'IGCSE', levels: '七年级至十一年级', subjects: '物理 0625、化学 0620、生物 0610、数学 0580' },
     ],
   },
   nav: { switchLabel: 'Language / 语言' },
@@ -165,6 +173,7 @@ const zh = {
       name: '请填写学生姓名。',
       lessonType: '请选择一对一或小组课。',
       level: '请选择年级。',
+      school: '请填写学校名称。',
       subjects: '请至少选一个科目。',
       format: '请选择网课或面对面。',
       location: '请填写上课地点。',
@@ -195,6 +204,12 @@ const zh = {
       allFull: '目前所有时段都满了。不过你还是可以先留个资料，一有空位我就联系你。',
     },
     level: { q: (n, who) => (who === 'parent' ? `${n}现在读几年级？` : '你现在读几年级？'), help: '独中、国中、国际学校都可以。' },
+    school: {
+      q: (n, who) => (who === 'parent' ? `${n}在哪间学校读书？` : '你在哪间学校读书？'),
+      help: '打几个字就会出现学校名单，点选就好。找不到的话，直接打全名也可以。',
+      ph: '例如：宽柔、循人、SMK Damansara Jaya',
+      noMatch: '名单里没有也没关系，就用你打的校名。',
+    },
     subjects: { q: '想补哪些科目？', help: '可以选不止一科。' },
     times: {
       q: '哪些时间比较方便？',
@@ -243,13 +258,14 @@ const zh = {
   labels: {
     lessonTypes: { private: '一对一', group: '小组课' },
     enquirers: { parent: '家长', student: '学生本人' },
+    schoolTypes: { dz: '独中', smjk: '国民型', gov: '国中', mrsm: 'MRSM', intl: '国际/私立' },
     subjects: { Physics: '物理', Chemistry: '化学', Biology: '生物', Science: '科学', Mathematics: '数学' },
     levelGroups: { uec: '独中（统考）', kssm: '国中（SPM）', igcse: '国际学校（IGCSE）', other: '其他' },
     levels: {
       'UEC Junior 1': '初一', 'UEC Junior 2': '初二', 'UEC Junior 3': '初三',
       'UEC Senior 1': '高一', 'UEC Senior 2': '高二', 'UEC Senior 3': '高三',
       'Form 1': '中一', 'Form 2': '中二', 'Form 3': '中三', 'Form 4': '中四', 'Form 5': '中五',
-      'IGCSE Year 10': '十年级', 'IGCSE Year 11': '十一年级', Other: '其他',
+      'IGCSE Year 7': '七年级', 'IGCSE Year 8': '八年级', 'IGCSE Year 9': '九年级', 'IGCSE Year 10': '十年级', 'IGCSE Year 11': '十一年级', Other: '其他',
     },
     formats: { online: '网课', 'in-person': '面对面', either: '网课或面对面' },
     weekdays: ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日'],

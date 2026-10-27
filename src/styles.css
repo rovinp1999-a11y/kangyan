@@ -208,11 +208,12 @@ textarea.wz__input { resize: vertical; min-height: 0; font-size: 1rem; }
 :lang(zh) .wz__lhead { letter-spacing: .06em; font-size: .8rem; }
 .wz__grid--uec { grid-template-columns: repeat(6, 1fr); }
 .wz__grid--kssm { grid-template-columns: repeat(5, 1fr); }
-.wz__grid--igcse, .wz__grid--other { grid-template-columns: repeat(4, 1fr); }
+.wz__grid--igcse { grid-template-columns: repeat(5, 1fr); }
+.wz__grid--other { grid-template-columns: repeat(4, 1fr); }
 .wz__levels .wz__opt { min-height: 46px; font-size: .9rem; }
 @media (max-width: 600px) {
-  .wz__levels .wz__grid--uec, .wz__levels .wz__grid--kssm { grid-template-columns: repeat(3, 1fr); }
-  .wz__levels .wz__grid--igcse, .wz__levels .wz__grid--other { grid-template-columns: repeat(2, 1fr); }
+  .wz__levels .wz__grid--uec, .wz__levels .wz__grid--kssm, .wz__levels .wz__grid--igcse { grid-template-columns: repeat(3, 1fr); }
+  .wz__levels .wz__grid--other { grid-template-columns: repeat(2, 1fr); }
 }
 
 
@@ -552,3 +553,19 @@ textarea.wz__input { resize: vertical; min-height: 0; font-size: 1rem; }
 .want { font-size: .72rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; border: 1.5px solid var(--ink); color: var(--white); white-space: nowrap; }
 .want--private { background: var(--purple); }
 .want--group { background: var(--green); }
+
+.enq__school .ic { color: var(--blue, #2563EB); }
+.school { position: relative; }
+.school__list { list-style: none; margin: 8px 0 0; padding: 4px; border: 2px solid var(--ink); border-radius: 14px; background: var(--white); max-height: 300px; overflow-y: auto; box-shadow: 0 6px 0 rgba(21,18,28,.12); }
+.school__opt { display: flex; align-items: center; gap: 10px; padding: 10px 12px; min-height: 48px; border-radius: 10px; cursor: pointer; }
+.school__opt.is-on, .school__opt:hover { background: rgba(124,58,237,.1); }
+.school__main { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.school__main strong { font-size: .95rem; line-height: 1.3; }
+.school__main span { font-size: .8rem; color: var(--ink-soft); line-height: 1.3; }
+.school__tag { flex: none; font-size: .7rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; border: 1.5px solid var(--ink); background: var(--white); white-space: nowrap; }
+.school__tag--dz { background: #FEF3C7; }
+.school__tag--smjk { background: #DCFCE7; }
+.school__tag--gov { background: #DBEAFE; }
+.school__tag--mrsm { background: #FCE7F3; }
+.school__tag--intl { background: #EDE9FE; }
+.school__none { margin-top: 8px; }

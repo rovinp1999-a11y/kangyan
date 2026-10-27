@@ -21,6 +21,7 @@ export default async function handler(req, res) {
   const format = str(b.format, 20) || 'either'
   const lessonType = str(b.lessonType, 20) || 'private'
   const location = str(b.location, 200)
+  const school = str(b.school, 160) // optional on the server so older open pages still submit
   const lang = b.lang === 'zh' ? 'zh' : 'en'
   // Optional for pages cached before this question existed; must be valid if sent.
   const enquirer = b.enquirer == null || b.enquirer === '' ? null : str(b.enquirer, 10)
@@ -58,8 +59,8 @@ export default async function handler(req, res) {
     }
 
     const [row] = await sql`
-      INSERT INTO enquiries (student_name, email, phone, level, subjects, format, lesson_type, location, lang, enquirer, message, preferred_slots)
-      VALUES (${name}, ${email || null}, ${phone || null}, ${level}, ${subjects}, ${format}, ${lessonType}, ${format === 'online' ? null : location || null}, ${lang}, ${enquirer}, ${message || null}, ${JSON.stringify(preferred)}::jsonb)
+      INSERT INTO enquiries (student_name, email, phone, level, subjects, format, lesson_type, location, school, lang, enquirer, message, preferred_slots)
+      VALUES (${name}, ${email || null}, ${phone || null}, ${level}, ${subjects}, ${format}, ${lessonType}, ${format === 'online' ? null : location || null}, ${school || null}, ${lang}, ${enquirer}, ${message || null}, ${JSON.stringify(preferred)}::jsonb)
       RETURNING id`
     return send(res, 201, { ok: true, id: row.id })
   } catch (err) {

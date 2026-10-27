@@ -6,7 +6,7 @@ export const SUBJECTS = ['Physics', 'Chemistry', 'Biology', 'Science', 'Mathemat
 export const LEVEL_GROUPS = [
   { key: 'uec', levels: ['UEC Junior 1', 'UEC Junior 2', 'UEC Junior 3', 'UEC Senior 1', 'UEC Senior 2', 'UEC Senior 3'] },
   { key: 'kssm', levels: ['Form 1', 'Form 2', 'Form 3', 'Form 4', 'Form 5'] },
-  { key: 'igcse', levels: ['IGCSE Year 10', 'IGCSE Year 11'] },
+  { key: 'igcse', levels: ['IGCSE Year 7', 'IGCSE Year 8', 'IGCSE Year 9', 'IGCSE Year 10', 'IGCSE Year 11'] },
   { key: 'other', levels: ['Other'] },
 ]
 export const LEVELS = LEVEL_GROUPS.flatMap((g) => g.levels)
