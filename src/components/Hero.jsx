@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { HeroArt } from './SciArt.jsx'
 
 // Split a word into animated character spans. `start` offsets the entrance delay
 // so letters cascade continuously across both headline lines.
@@ -11,8 +11,6 @@ function chars(text, start = 0) {
 }
 
 export default function Hero() {
-  const [missing, setMissing] = useState(false)
-
   return (
     <section className="hero" id="home">
       <div className="container hero__grid">
@@ -46,19 +44,7 @@ export default function Hero() {
         <div className="hero__media">
           <span className="hero__tag">Taking new students</span>
           <div className="hero__photo" data-tilt="7">
-            {/* 📸 REPLACE: public/assets/kangyan-hero.jpg */}
-            {!missing ? (
-              <img
-                src="/assets/kangyan-hero.jpg"
-                alt="Kangyan, science and maths tutor"
-                onError={() => setMissing(true)}
-              />
-            ) : (
-              <div className="photo-fallback">
-                <span>Your photo here</span>
-                <small>public/assets/kangyan-hero.jpg</small>
-              </div>
-            )}
+            <HeroArt />
           </div>
         </div>
       </div>

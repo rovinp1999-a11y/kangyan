@@ -1,5 +1,5 @@
-import { useState } from 'react'
 import Reveal from './Reveal.jsx'
+import { AboutArt } from './SciArt.jsx'
 
 const POINTS = [
   'SPM & IGCSE syllabus coverage',
@@ -9,26 +9,12 @@ const POINTS = [
 ]
 
 export default function About() {
-  const [missing, setMissing] = useState(false)
-
   return (
     <section className="section" id="about">
       <div className="container about__grid">
         <Reveal className="about__media">
           <div className="about__photo">
-            {/* 📸 REPLACE: public/assets/kangyan-about.jpg */}
-            {!missing ? (
-              <img
-                src="/assets/kangyan-about.jpg"
-                alt="Portrait of Kangyan"
-                onError={() => setMissing(true)}
-              />
-            ) : (
-              <div className="photo-fallback">
-                <span>Portrait</span>
-                <small>public/assets/kangyan-about.jpg</small>
-              </div>
-            )}
+            <AboutArt />
           </div>
         </Reveal>
 
