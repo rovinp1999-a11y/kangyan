@@ -12,7 +12,7 @@ export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
       const rows = await sql`
-        SELECT id, created_at, student_name, email, phone, level, subjects, format, message, preferred_slots, status
+        SELECT id, created_at, student_name, email, phone, level, subjects, format, lesson_type, message, preferred_slots, status
         FROM enquiries ORDER BY created_at DESC LIMIT 300`
       return send(res, 200, { ok: true, enquiries: rows })
     }

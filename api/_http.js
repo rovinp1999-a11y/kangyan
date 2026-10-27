@@ -11,7 +11,12 @@ export function fail(res, status, error) {
 
 /** Vercel parses JSON bodies into req.body; be tolerant of raw strings. */
 export function readBody(req) {
-  const b = req.body
+  let b
+  try {
+    b = req.body // Vercel's getter throws on malformed JSON
+  } catch {
+    return {}
+  }
   if (b == null) return {}
   if (typeof b === 'string') {
     try { return JSON.parse(b) } catch { return {} }

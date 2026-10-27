@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  WEEKDAYS, WEEKDAYS_SHORT, ENQUIRY_STATUSES, FORMATS, formatRange,
+  WEEKDAYS, WEEKDAYS_SHORT, ENQUIRY_STATUSES, FORMATS, LESSON_TYPES, LESSON_TYPE_LABEL, formatRange,
 } from '../../shared/constants.js'
 
 /* ------------------------------------------------------------------ */
@@ -35,8 +35,7 @@ const STATUS_META = {
 const FORMAT_LABEL = Object.fromEntries(FORMATS.map((f) => [f.value, f.label]))
 
 const PRESETS = [
-  ['16:00', '18:00'], ['18:00', '20:00'], ['20:00', '22:00'],
-  ['10:00', '12:00'], ['14:00', '16:00'],
+  ['17:30', '19:00'], ['19:00', '20:30'], ['20:30', '22:00'],
 ]
 
 const fullDate = (iso) =>
@@ -224,10 +223,11 @@ function EnquiryCard({ r, onStatus, notify }) {
   const long = (r.message || '').length > 140 || (r.message || '').split('\n').length > 3
   const subject = encodeURIComponent(`Tuition enquiry — ${r.subjects.join(', ')}`)
 
+  const copyWhat = r.email || r.phone
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(r.email)
-      notify('Email copied')
+      await navigator.clipboard.writeText(copyWhat)
+      notify(r.email ? 'Email copied' : 'Number copied')
     } catch {
       notify('Could not copy', 'error')
     }
@@ -249,6 +249,7 @@ function EnquiryCard({ r, onStatus, notify }) {
       </header>
 
       <div className="enq__tags">
+        <span className={`tag-k tag-k--${r.lesson_type || 'private'}`}>{LESSON_TYPE_LABEL[r.lesson_type] || LESSON_TYPE_LABEL.private}</span>
         {r.subjects.map((s) => <span className="tag-s" key={s}>{s}</span>)}
         <span className="tag-f">{FORMAT_LABEL[r.format] || r.format}</span>
       </div>
@@ -272,16 +273,16 @@ function EnquiryCard({ r, onStatus, notify }) {
       )}
 
       <p className="enq__contact">
-        {r.email}{r.phone && <> · {r.phone}</>}
+        {[r.phone, r.email].filter(Boolean).join(' · ')}
       </p>
 
       <footer className="enq__actions">
-        <a className="act" href={`mailto:${r.email}?subject=${subject}`}><Icon name="mail" />Email</a>
         {r.phone && (
           <a className="act act--wa" href={waLink(r.phone)} target="_blank" rel="noopener noreferrer"><Icon name="chat" />WhatsApp</a>
         )}
+        {r.email && <a className="act" href={`mailto:${r.email}?subject=${subject}`}><Icon name="mail" />Email</a>}
         {r.phone && <a className="act" href={`tel:${r.phone}`}><Icon name="phone" />Call</a>}
-        <button type="button" className="act" onClick={copy}><Icon name="copy" />Copy email</button>
+        <button type="button" className="act" onClick={copy}><Icon name="copy" />{r.email ? 'Copy email' : 'Copy number'}</button>
       </footer>
     </article>
   )
@@ -302,7 +303,7 @@ function EnquiriesTab({ rows, setRows, onAuthError, notify }) {
     const list = rows.filter((r) => {
       if (filter !== 'all' && r.status !== filter) return false
       if (!needle) return true
-      return [r.student_name, r.email, r.phone, r.level, r.message, ...r.subjects]
+      return [r.student_name, r.email, r.phone, r.level, r.message, LESSON_TYPE_LABEL[r.lesson_type], ...r.subjects]
         .filter(Boolean)
         .some((v) => v.toLowerCase().includes(needle))
     })
@@ -374,8 +375,9 @@ function EnquiriesTab({ rows, setRows, onAuthError, notify }) {
 
 function SlotsTab({ slots, setSlots, onAuthError, notify }) {
   const [days, setDays] = useState(() => new Set([0]))
-  const [start, setStart] = useState('16:00')
-  const [end, setEnd] = useState('18:00')
+  const [start, setStart] = useState('17:30')
+  const [end, setEnd] = useState('19:00')
+  const [kind, setKind] = useState('private')
   const [busy, setBusy] = useState(false)
 
   const fail = (e) => (e.unauthorized ? onAuthError() : notify(e.message, 'error'))
@@ -394,11 +396,11 @@ function SlotsTab({ slots, setSlots, onAuthError, notify }) {
     setBusy(true)
     try {
       const results = await Promise.all(
-        [...days].sort().map((weekday) => api('/api/admin/slots', { method: 'POST', body: { weekday, start, end } })),
+        [...days].sort().map((weekday) => api('/api/admin/slots', { method: 'POST', body: { weekday, start, end, kind } })),
       )
       const added = results.map((r) => r.slot)
       setSlots((s) => sortSlots([...s.filter((x) => !added.some((a) => a.id === x.id)), ...added]))
-      notify(`Added ${formatRange(start, end)} to ${added.length} day${added.length > 1 ? 's' : ''}`)
+      notify(`Added ${LESSON_TYPE_LABEL[kind].toLowerCase()} ${formatRange(start, end)} to ${added.length} day${added.length > 1 ? 's' : ''}`)
     } catch (err) {
       fail(err)
     } finally {
@@ -411,6 +413,18 @@ function SlotsTab({ slots, setSlots, onAuthError, notify }) {
     setSlots((s) => s.map((x) => (x.id === slot.id ? { ...x, status } : x)))
     try {
       await api('/api/admin/slots', { method: 'PATCH', body: { id: slot.id, status } })
+    } catch (err) {
+      setSlots((s) => s.map((x) => (x.id === slot.id ? slot : x)))
+      fail(err)
+    }
+  }
+
+  const setSlotKind = async (slot, next) => {
+    if (slot.kind === next) return
+    setSlots((s) => s.map((x) => (x.id === slot.id ? { ...x, kind: next } : x)))
+    try {
+      await api('/api/admin/slots', { method: 'PATCH', body: { id: slot.id, kind: next } })
+      notify(`${WEEKDAYS_SHORT[slot.weekday]} ${formatRange(slot.start, slot.end)} is now ${LESSON_TYPE_LABEL[next].toLowerCase()}`)
     } catch (err) {
       setSlots((s) => s.map((x) => (x.id === slot.id ? slot : x)))
       fail(err)
@@ -430,6 +444,7 @@ function SlotsTab({ slots, setSlots, onAuthError, notify }) {
   }
 
   const openCount = slots.filter((s) => s.status === 'open').length
+  const groupCount = slots.filter((s) => s.kind === 'group').length
 
   return (
     <>
@@ -456,6 +471,17 @@ function SlotsTab({ slots, setSlots, onAuthError, notify }) {
           </div>
         </div>
 
+        <div className="adm-add__row">
+          <span className="adm-add__label">Type</span>
+          <div className="kindpick" role="group" aria-label="Class type">
+            {LESSON_TYPES.map((k) => (
+              <button key={k} type="button" className={`kindpick__b kindpick__b--${k} ${kind === k ? 'is-on' : ''}`} aria-pressed={kind === k} onClick={() => setKind(k)}>
+                {LESSON_TYPE_LABEL[k]}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="presets" aria-label="Quick times">
           {PRESETS.map(([s, e]) => (
             <button key={s} type="button" className={`preset ${start === s && end === e ? 'is-on' : ''}`} onClick={() => { setStart(s); setEnd(e) }}>
@@ -472,7 +498,9 @@ function SlotsTab({ slots, setSlots, onAuthError, notify }) {
       <div className="adm-summary">
         <span><b>{openCount}</b> open</span>
         <span><b>{slots.length - openCount}</b> taken</span>
-        <span className="adm-summary__hint">Tap the switch to mark a slot taken. Changes show on the website instantly.</span>
+        <span><b>{slots.length - groupCount}</b> private</span>
+        <span><b>{groupCount}</b> group</span>
+        <span className="adm-summary__hint">Set each slot to 1-to-1 or Group, and switch it off when it's taken. The enquiry page only shows students the slots that match the class they pick.</span>
       </div>
 
       <div className="adm-week">
@@ -494,14 +522,25 @@ function SlotsTab({ slots, setSlots, onAuthError, notify }) {
                     const range = formatRange(s.start, s.end)
                     return (
                       <li className={`adm-slot ${isOpen ? '' : 'is-taken'}`} key={s.id}>
-                        <span className="adm-slot__time">{range}</span>
-                        <button type="button" role="switch" aria-checked={isOpen} aria-label={`${name} ${range}: ${isOpen ? 'open' : 'taken'}`} className="switch" onClick={() => toggle(s)}>
-                          <span className="switch__track"><span className="switch__thumb" /></span>
-                          <span className="switch__txt">{isOpen ? 'Open' : 'Taken'}</span>
-                        </button>
-                        <button type="button" className="icon-btn icon-btn--danger" aria-label={`Delete ${name} ${range}`} onClick={() => remove(s)}>
-                          <Icon name="trash" />
-                        </button>
+                        <div className="adm-slot__top">
+                          <span className="adm-slot__time">{range}</span>
+                          <button type="button" className="icon-btn icon-btn--danger" aria-label={`Delete ${name} ${range}`} onClick={() => remove(s)}>
+                            <Icon name="trash" />
+                          </button>
+                        </div>
+                        <div className="adm-slot__ctrls">
+                          <div className="kindpick kindpick--sm" role="group" aria-label={`${name} ${range} class type`}>
+                            {LESSON_TYPES.map((k) => (
+                              <button key={k} type="button" className={`kindpick__b kindpick__b--${k} ${s.kind === k ? 'is-on' : ''}`} aria-pressed={s.kind === k} onClick={() => setSlotKind(s, k)}>
+                                {k === 'private' ? '1-to-1' : 'Group'}
+                              </button>
+                            ))}
+                          </div>
+                          <button type="button" role="switch" aria-checked={isOpen} aria-label={`${name} ${range}: ${isOpen ? 'open' : 'taken'}`} className="switch" onClick={() => toggle(s)}>
+                            <span className="switch__track"><span className="switch__thumb" /></span>
+                            <span className="switch__txt">{isOpen ? 'Open' : 'Taken'}</span>
+                          </button>
+                        </div>
                       </li>
                     )
                   })}

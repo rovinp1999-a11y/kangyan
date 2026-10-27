@@ -1,4 +1,4 @@
-// GET /api/slots — public weekly availability (open and taken slots).
+// GET /api/slots — public weekly availability (open/taken, private/group).
 import { getSql } from './_db.js'
 import { allow, send, fail } from './_http.js'
 
@@ -6,7 +6,7 @@ export const SLOT_COLUMNS = `
   id, weekday,
   to_char(start_time, 'HH24:MI') AS start,
   to_char(end_time,   'HH24:MI') AS "end",
-  status
+  status, kind
 `
 
 export default async function handler(req, res) {

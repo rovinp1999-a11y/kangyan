@@ -1,4 +1,4 @@
-// Creates the tables (idempotent) and seeds a starter weekly timetable if empty.
+// Creates/updates the tables (idempotent) and seeds the weekday timetable if empty.
 //   node scripts/migrate.js            → uses .env.local
 //   node scripts/migrate.js --env path → uses another env file
 import { readFileSync } from 'node:fs'
@@ -19,6 +19,7 @@ const statements = [
      start_time  TIME NOT NULL,
      end_time    TIME NOT NULL CHECK (end_time > start_time),
      status      TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','taken')),
+     kind        TEXT NOT NULL DEFAULT 'private' CHECK (kind IN ('private','group')),
      created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
      UNIQUE (weekday, start_time, end_time)
    )`,
@@ -26,25 +27,29 @@ const statements = [
      id              SERIAL PRIMARY KEY,
      created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
      student_name    TEXT NOT NULL,
-     email           TEXT NOT NULL,
+     email           TEXT,
      phone           TEXT,
      level           TEXT NOT NULL,
      subjects        TEXT[] NOT NULL,
      format          TEXT NOT NULL DEFAULT 'either',
+     lesson_type     TEXT NOT NULL DEFAULT 'private' CHECK (lesson_type IN ('private','group')),
      message         TEXT,
      preferred_slots JSONB NOT NULL DEFAULT '[]'::jsonb,
      status          TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new','contacted','confirmed','closed'))
    )`,
   `CREATE INDEX IF NOT EXISTS enquiries_created_at_idx ON enquiries (created_at DESC)`,
+  // upgrades for databases created before slot kinds / lesson types existed
+  `ALTER TABLE availability_slots ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'private' CHECK (kind IN ('private','group'))`,
+  `ALTER TABLE enquiries ADD COLUMN IF NOT EXISTS lesson_type TEXT NOT NULL DEFAULT 'private' CHECK (lesson_type IN ('private','group'))`,
+  `ALTER TABLE enquiries ALTER COLUMN email DROP NOT NULL`,
 ]
 for (const s of statements) await sql.query(s)
 
 const [{ count }] = await sql.query('SELECT count(*)::int AS count FROM availability_slots')
 if (count === 0) {
-  // Starter timetable: weekday evenings + weekend mornings/afternoons. Edit in /admin.
+  // Weekday evenings, Monday–Friday. Mark slots taken or group in /admin.
   const seed = []
-  for (const d of [0, 1, 2, 3, 4]) seed.push([d, '16:00', '18:00'], [d, '18:00', '20:00'], [d, '20:00', '22:00'])
-  for (const d of [5, 6]) seed.push([d, '10:00', '12:00'], [d, '14:00', '16:00'])
+  for (const d of [0, 1, 2, 3, 4]) seed.push([d, '17:30', '19:00'], [d, '19:00', '20:30'], [d, '20:30', '22:00'])
   for (const [w, s, e] of seed) {
     await sql.query('INSERT INTO availability_slots (weekday, start_time, end_time) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING', [w, s, e])
   }
