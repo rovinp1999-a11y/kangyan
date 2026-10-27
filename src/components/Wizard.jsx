@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { SUBJECTS, LEVEL_GROUPS } from '../../shared/constants.js'
+import { SUBJECTS, LEVEL_GROUPS, LEVELS, LESSON_TYPES } from '../../shared/constants.js'
 import { useLang, shortRange } from '../i18n.jsx'
 import { confettiBurst } from '../confetti.js'
 import { subjectTiles } from '../data.js'
@@ -9,14 +9,31 @@ import { subjectTiles } from '../data.js'
 // → online/in person → contact + note → done.
 const STEPS = ['name', 'type', 'level', 'subjects', 'times', 'format', 'contact']
 const DRAFT_KEY = 'kangyan-enquiry-draft'
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const EMAIL_RE = /^[^\s@?&=]+@[^\s@?&=]+\.[^\s@?&=]+$/ // same rule as the server
+// Server error code → wizard step to send the student back to.
+const CODE_STEP = { name: 0, lessonType: 1, level: 2, subjects: 3, format: 5, location: 5, phone: 6, email: 6, contact: 6 }
 const EMPTY = { name: '', lessonType: '', level: '', subjects: [], slots: [], format: '', location: '', phone: '', email: '', message: '', website: '' }
 
 const loadDraft = () => {
   try {
     const d = JSON.parse(sessionStorage.getItem(DRAFT_KEY) || 'null')
-    if (d && typeof d === 'object' && d.data) {
-      const data = { ...EMPTY, ...d.data }
+    if (d && typeof d === 'object' && d.data && typeof d.data === 'object') {
+      // Keep only well-formed, still-valid values (drafts can come from older builds).
+      const r = d.data
+      const s = (v, max) => (typeof v === 'string' ? v.slice(0, max) : '')
+      const data = {
+        ...EMPTY,
+        name: s(r.name, 80),
+        lessonType: LESSON_TYPES.includes(r.lessonType) ? r.lessonType : '',
+        level: LEVELS.includes(r.level) ? r.level : '',
+        subjects: Array.isArray(r.subjects) ? r.subjects.filter((x) => SUBJECTS.includes(x)) : [],
+        slots: Array.isArray(r.slots) ? r.slots.filter((x) => Number.isInteger(x)) : [],
+        format: ['online', 'in-person', 'either'].includes(r.format) ? r.format : '',
+        location: s(r.location, 200),
+        phone: s(r.phone, 30),
+        email: s(r.email, 120),
+        message: s(r.message, 2000),
+      }
       const step = Math.min(Math.max(0, d.step | 0), STEPS.length - 1)
       return { step: firstGap(data, step), data }
     }
@@ -103,9 +120,12 @@ export default function Wizard() {
   }, [step, done])
 
   useEffect(() => () => clearTimeout(advanceTimer.current), [])
+  // Error text is language-specific; drop it when the language changes.
+  useEffect(() => { setError('') }, [lang])
 
-  const set = (k, v) => setData((d) => ({ ...d, [k]: v }))
-  const toggleIn = (k, v) => setData((d) => ({ ...d, [k]: d[k].includes(v) ? d[k].filter((x) => x !== v) : [...d[k], v] }))
+  // Any edit clears a stale error message.
+  const set = (k, v) => { setError(''); setData((d) => ({ ...d, [k]: v })) }
+  const toggleIn = (k, v) => { setError(''); setData((d) => ({ ...d, [k]: d[k].includes(v) ? d[k].filter((x) => x !== v) : [...d[k], v] })) }
 
   const kindSlots = slots.filter((s) => s.kind === data.lessonType)
   // Only open slots can be sent, even if a picked one has since filled up.
@@ -141,6 +161,7 @@ export default function Wizard() {
 
   // Single-choice steps move on by themselves after a short beat.
   const choose = (k, v) => {
+    setError('')
     setData((d) => ({ ...d, [k]: v, ...(k === 'lessonType' && d.lessonType !== v ? { slots: [] } : {}) }))
     clearTimeout(advanceTimer.current)
     advanceTimer.current = setTimeout(() => go(step + 1), 260)
@@ -178,7 +199,16 @@ export default function Wizard() {
         }),
       })
       const json = await res.json().catch(() => ({}))
-      if (!res.ok || !json.ok) throw new Error(lang === 'en' && json.error ? json.error : w.failed)
+      if (!res.ok || !json.ok) {
+        // Validation problem: show a translated message on the step that needs fixing.
+        if (json.code && json.code in CODE_STEP) {
+          const to = CODE_STEP[json.code]
+          if (to !== step) go(to)
+          setError(w.errors[json.code])
+          return
+        }
+        throw new Error(w.failed)
+      }
       const btn = document.querySelector('.wz__submit')
       if (btn) {
         const r = btn.getBoundingClientRect()

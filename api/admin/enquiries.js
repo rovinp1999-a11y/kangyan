@@ -1,7 +1,7 @@
 // Admin-only. GET /api/admin/enquiries → list; PATCH { id, status } → update.
 import { getSql } from '../_db.js'
 import { requireAdmin } from '../_auth.js'
-import { allow, readBody, send, fail } from '../_http.js'
+import { allow, readBody, send, fail, isDbId } from '../_http.js'
 import { ENQUIRY_STATUSES } from '../../shared/constants.js'
 
 export default async function handler(req, res) {
@@ -18,7 +18,7 @@ export default async function handler(req, res) {
     }
 
     const { id, status } = readBody(req)
-    if (!Number.isInteger(id) || !ENQUIRY_STATUSES.includes(status)) return fail(res, 400, 'Invalid id or status')
+    if (!isDbId(id) || !ENQUIRY_STATUSES.includes(status)) return fail(res, 400, 'Invalid id or status')
     const rows = await sql`UPDATE enquiries SET status = ${status} WHERE id = ${id} RETURNING id, status`
     if (!rows.length) return fail(res, 404, 'Enquiry not found')
     return send(res, 200, { ok: true, enquiry: rows[0] })

@@ -60,7 +60,8 @@ const initials = (name) =>
 /** Malaysian-friendly wa.me link: strips symbols, turns a leading 0 into 60. */
 function waLink(phone, text = '') {
   let d = phone.replace(/\D/g, '')
-  if (d.startsWith('0')) d = `60${d.slice(1)}`
+  if (d.startsWith('00')) d = d.slice(2) // 0060… international prefix
+  else if (d.startsWith('0')) d = `60${d.slice(1)}` // 012… local number
   return `https://wa.me/${d}${text ? `?text=${encodeURIComponent(text)}` : ''}`
 }
 
@@ -76,7 +77,7 @@ export function draftMessage(r) {
     : `${L.levels[r.level] || r.level}${{ uec: ' (UEC)', igcse: ' (IGCSE)' }[group] || ''}`
   const subjects = r.subjects.map((x) => (zh ? L.subjects[x] : x) || x).join(zh ? '、' : ', ')
   const slots = (r.preferred_slots || []).map((x) =>
-    x.weekday != null && x.start ? `${L.weekdaysShort[x.weekday]} ${shortRange(x.start, x.end, zh ? 'zh' : 'en')}` : x.label)
+    x.weekday != null && x.start && x.end ? `${L.weekdaysShort[x.weekday]} ${shortRange(x.start, x.end, zh ? 'zh' : 'en')}` : x.label)
   const times = slots.length ? slots.join(zh ? '、' : ', ') : zh ? '时间都可以' : 'Flexible'
   const type = zh ? (r.lesson_type === 'group' ? '小组课' : '一对一私人课') : LESSON_TYPE_LABEL[r.lesson_type] || LESSON_TYPE_LABEL.private
   const fmt = L.formats[r.format] || L.formats.either
@@ -332,7 +333,7 @@ function EnquiryCard({ r, onStatus, notify }) {
         {r.phone && (
           <a className="act act--wa" href={waLink(r.phone, draftMessage(r))} target="_blank" rel="noopener noreferrer" title="Opens WhatsApp with a drafted reply you can edit"><Icon name="chat" />WhatsApp</a>
         )}
-        {r.email && <a className="act" href={`mailto:${r.email}?subject=${subject}&body=${encodeURIComponent(draftMessage(r))}`}><Icon name="mail" />Email</a>}
+        {r.email && <a className="act" href={`mailto:${encodeURIComponent(r.email)}?subject=${subject}&body=${encodeURIComponent(draftMessage(r))}`}><Icon name="mail" />Email</a>}
         {r.phone && <a className="act" href={`tel:${r.phone}`}><Icon name="phone" />Call</a>}
         <button type="button" className="act" onClick={copy}><Icon name="copy" />{r.email ? 'Copy email' : 'Copy number'}</button>
       </footer>
@@ -370,13 +371,14 @@ function EnquiriesTab({ rows, setRows, onAuthError, notify }) {
   }, [rows, filter, q, sort])
 
   const setStatus = async (id, status) => {
-    const prev = rows
-    setRows(rows.map((r) => (r.id === id ? { ...r, status } : r)))
+    const old = rows.find((r) => r.id === id)?.status
+    setRows((rs) => rs.map((r) => (r.id === id ? { ...r, status } : r)))
     try {
       await api('/api/admin/enquiries', { method: 'PATCH', body: { id, status } })
       notify(`Marked as ${STATUS_META[status].label.toLowerCase()}`)
     } catch (e) {
-      setRows(prev)
+      // Roll back only this enquiry; other changes made meanwhile stay.
+      setRows((rs) => rs.map((r) => (r.id === id ? { ...r, status: old } : r)))
       e.unauthorized ? onAuthError() : notify(e.message, 'error')
     }
   }
@@ -404,7 +406,7 @@ function EnquiriesTab({ rows, setRows, onAuthError, notify }) {
       <div className="adm-tools">
         <label className="adm-search">
           <Icon name="search" />
-          <input type="search" placeholder="Search name, area, subject…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search enquiries" />
+          <input type="search" placeholder="Search enquiries" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search enquiries" />
         </label>
         <button type="button" className="adm-sort" onClick={() => setSort((s) => (s === 'newest' ? 'oldest' : 'newest'))} aria-label={`Sort: ${sort} first`}>
           <Icon name="sort" />
@@ -454,12 +456,21 @@ function SlotsTab({ slots, setSlots, onAuthError, notify }) {
     if (!start || !end || start >= end) return notify('End time must be after start time', 'error')
     setBusy(true)
     try {
-      const results = await Promise.all(
+      const results = await Promise.allSettled(
         [...days].sort().map((weekday) => api('/api/admin/slots', { method: 'POST', body: { weekday, start, end, kind } })),
       )
-      const added = results.map((r) => r.slot)
-      setSlots((s) => sortSlots([...s.filter((x) => !added.some((a) => a.id === x.id)), ...added]))
-      notify(`Added ${LESSON_TYPE_LABEL[kind].toLowerCase()} ${formatRange(start, end)} to ${added.length} day${added.length > 1 ? 's' : ''}`)
+      const ok = results.filter((r) => r.status === 'fulfilled').map((r) => r.value)
+      const failed = results.filter((r) => r.status === 'rejected')
+      if (failed.some((r) => r.reason?.unauthorized)) return onAuthError()
+      const got = ok.map((r) => r.slot)
+      setSlots((s) => sortSlots([...s.filter((x) => !got.some((a) => a.id === x.id)), ...got]))
+      const added = ok.filter((r) => !r.existed).length
+      const existed = ok.length - added
+      const parts = []
+      if (added) parts.push(`Added ${LESSON_TYPE_LABEL[kind].toLowerCase()} ${formatRange(start, end)} to ${added} day${added > 1 ? 's' : ''}`)
+      if (existed) parts.push(`${existed} already existed (left unchanged)`)
+      if (failed.length) parts.push(`${failed.length} failed: ${failed[0].reason?.message || 'error'}`)
+      notify(parts.join(' · ') || 'Nothing added', failed.length ? 'error' : 'ok')
     } catch (err) {
       fail(err)
     } finally {
@@ -659,7 +670,8 @@ export default function AdminPage() {
         fetch('/api/slots').then((r) => r.json()),
       ])
       setEnquiries(e.enquiries)
-      setSlots(sortSlots(s.slots || []))
+      if (!s.ok) throw new Error(s.error || 'Could not load the timetable')
+      setSlots(sortSlots(s.slots))
       return true
     } catch (err) {
       err.unauthorized ? logout() : setLoadErr(err.message)

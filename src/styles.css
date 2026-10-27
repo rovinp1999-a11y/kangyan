@@ -75,7 +75,7 @@ h1, h2, h3 { font-family: var(--ff-display); font-weight: 700; line-height: 1.1;
 .nav__logo { font-family: var(--ff-display); font-weight: 800; font-size: 1.35rem; letter-spacing: -0.03em; display: inline-flex; align-items: center; gap: 4px; }
 .nav__logo .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--yellow); margin-left: 2px; }
 .lang { display: inline-flex; padding: 3px; border: 2px solid var(--ink); border-radius: 999px; background: var(--white); }
-.lang button { font: inherit; font-size: .8rem; font-weight: 700; min-width: 42px; height: 32px; padding: 0 11px; border: 0; border-radius: 999px; background: none; color: var(--ink); cursor: pointer; transition: background .15s, color .15s; }
+.lang button { font: inherit; font-size: .8rem; font-weight: 700; min-width: 44px; height: 36px; padding: 0 11px; border: 0; border-radius: 999px; background: none; color: var(--ink); cursor: pointer; transition: background .15s, color .15s; }
 .lang button.is-on { background: var(--ink); color: var(--white); }
 .lang button:not(.is-on):hover { background: rgba(21,18,28,.07); }
 .lang button:focus-visible { outline: 3px solid var(--purple); outline-offset: 2px; }
@@ -184,7 +184,7 @@ textarea.wz__input { resize: vertical; min-height: 0; font-size: 1rem; }
 .wz__summary { margin-top: 16px; padding: 12px 14px; border-radius: 14px; background: var(--paper); border: 1.5px dashed #C9C4B8; }
 .wz__summarytitle { font-size: .7rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
 .wz__chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.wz__chip { font: inherit; font-size: .82rem; font-weight: 600; padding: 5px 11px; border-radius: 999px; border: 1.5px solid var(--ink); background: var(--white); color: var(--ink); cursor: pointer; transition: background .12s; }
+.wz__chip { font: inherit; font-size: .82rem; font-weight: 600; min-height: 36px; padding: 6px 12px; border-radius: 999px; border: 1.5px solid var(--ink); background: var(--white); color: var(--ink); cursor: pointer; transition: background .12s; }
 .wz__chip:hover { background: var(--yellow); }
 
 .wz__error { padding: 10px 14px; border-radius: 12px; background: #DC2626; color: var(--white); font-size: .9rem; font-weight: 500; }
@@ -350,7 +350,7 @@ textarea.wz__input { resize: vertical; min-height: 0; font-size: 1rem; }
 .enq__flex { font-size: .85rem; font-style: italic; color: var(--muted); }
 .enq__msg { font-size: .94rem; line-height: 1.55; background: var(--paper); border-radius: 12px; padding: 11px 14px; white-space: pre-wrap; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .enq__msg.is-open { display: block; }
-.enq__more { margin-top: 6px; font: inherit; font-size: .84rem; font-weight: 600; color: var(--purple); background: none; border: 0; cursor: pointer; padding: 2px 0; }
+.enq__more { margin-top: 2px; font: inherit; font-size: .84rem; font-weight: 600; color: var(--purple); background: none; border: 0; cursor: pointer; padding: 8px 0; min-height: 36px; }
 .enq__contact { font-size: .86rem; color: var(--ink-soft); overflow-wrap: anywhere; }
 .enq__actions { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 12px; border-top: 1px dashed var(--line); }
 .act { font: inherit; font-size: .86rem; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 8px 13px; min-height: 40px; border-radius: 12px; border: 2px solid var(--line); background: var(--white); color: var(--ink); cursor: pointer; transition: border-color .15s, background .15s; }

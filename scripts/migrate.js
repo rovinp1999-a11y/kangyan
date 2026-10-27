@@ -40,6 +40,11 @@ const statements = [
      status          TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new','contacted','confirmed','closed'))
    )`,
   `CREATE INDEX IF NOT EXISTS enquiries_created_at_idx ON enquiries (created_at DESC)`,
+  `CREATE TABLE IF NOT EXISTS admin_login_attempts (
+     ip  TEXT NOT NULL,
+     at  TIMESTAMPTZ NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS admin_login_attempts_ip_at_idx ON admin_login_attempts (ip, at DESC)`,
   // upgrades for databases created before slot kinds / lesson types existed
   `ALTER TABLE availability_slots ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'private' CHECK (kind IN ('private','group'))`,
   `ALTER TABLE enquiries ADD COLUMN IF NOT EXISTS lesson_type TEXT NOT NULL DEFAULT 'private' CHECK (lesson_type IN ('private','group'))`,

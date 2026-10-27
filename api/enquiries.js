@@ -1,9 +1,10 @@
 // POST /api/enquiries — a student/parent submits a tuition enquiry.
 import { getSql } from './_db.js'
-import { allow, readBody, send, fail } from './_http.js'
+import { allow, readBody, send, fail, isDbId } from './_http.js'
 import { SUBJECTS, LEVELS, FORMATS, LESSON_TYPES, slotLabel } from '../shared/constants.js'
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+// No ? & = so an address can't smuggle extra parameters into a mailto: link.
+const EMAIL_RE = /^[^\s@?&=]+@[^\s@?&=]+\.[^\s@?&=]+$/
 const str = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '')
 
 export default async function handler(req, res) {
@@ -24,19 +25,20 @@ export default async function handler(req, res) {
   const message = str(b.message, 2000)
   const subjects = Array.isArray(b.subjects) ? b.subjects.filter((s) => SUBJECTS.includes(s)) : []
   const slotIds = Array.isArray(b.preferredSlots)
-    ? [...new Set(b.preferredSlots.map(Number).filter(Number.isInteger))].slice(0, 10)
+    ? [...new Set(b.preferredSlots.map(Number).filter(isDbId))].slice(0, 50)
     : []
 
-  if (name.length < 2) return fail(res, 400, 'Please enter your name')
   const phoneDigits = phone.replace(/\D/g, '')
-  if (!email && phoneDigits.length < 8) return fail(res, 400, 'Please give a WhatsApp number or an email')
-  if (email && !EMAIL_RE.test(email)) return fail(res, 400, 'Please enter a valid email')
-  if (phone && phoneDigits.length < 8) return fail(res, 400, 'Please enter a valid WhatsApp number')
-  if (!LESSON_TYPES.includes(lessonType)) return fail(res, 400, 'Invalid lesson type')
-  if (format === 'in-person' && location.length < 2) return fail(res, 400, 'Please enter the lesson location')
-  if (!LEVELS.includes(level)) return fail(res, 400, 'Please choose a level')
-  if (subjects.length === 0) return fail(res, 400, 'Pick at least one subject')
-  if (!FORMATS.some((f) => f.value === format)) return fail(res, 400, 'Invalid format')
+  // Checked in wizard order, so the client can send the student to the first problem.
+  if (name.length < 2) return fail(res, 400, 'Please enter your name', 'name')
+  if (!LESSON_TYPES.includes(lessonType)) return fail(res, 400, 'Invalid lesson type', 'lessonType')
+  if (!LEVELS.includes(level)) return fail(res, 400, 'Please choose a level', 'level')
+  if (subjects.length === 0) return fail(res, 400, 'Pick at least one subject', 'subjects')
+  if (!FORMATS.some((f) => f.value === format)) return fail(res, 400, 'Invalid format', 'format')
+  if (format === 'in-person' && location.length < 2) return fail(res, 400, 'Please enter the lesson location', 'location')
+  if (phone && phoneDigits.length < 8) return fail(res, 400, 'Please enter a valid WhatsApp number', 'phone')
+  if (email && !EMAIL_RE.test(email)) return fail(res, 400, 'Please enter a valid email', 'email')
+  if (!email && !phone) return fail(res, 400, 'Please give a WhatsApp number or an email', 'contact')
 
   try {
     const sql = getSql()

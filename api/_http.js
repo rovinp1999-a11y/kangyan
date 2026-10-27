@@ -5,8 +5,18 @@ export function send(res, status, body) {
   return res.status(status).json(body)
 }
 
-export function fail(res, status, error) {
-  return send(res, status, { ok: false, error })
+// `code` lets the client show its own translated message and jump to the right step.
+export function fail(res, status, error, code) {
+  return send(res, status, code ? { ok: false, error, code } : { ok: false, error })
+}
+
+/** Positive integers that fit a Postgres INTEGER column. */
+export const isDbId = (n) => Number.isInteger(n) && n > 0 && n <= 2147483647
+
+/** Client IP as seen by Vercel (first hop of x-forwarded-for). */
+export function clientIp(req) {
+  const xf = String(req.headers['x-forwarded-for'] || '')
+  return (xf.split(',')[0] || req.headers['x-real-ip'] || req.socket?.remoteAddress || 'unknown').trim().slice(0, 64)
 }
 
 /** Vercel parses JSON bodies into req.body; be tolerant of raw strings. */
