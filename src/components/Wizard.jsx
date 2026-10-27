@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { SUBJECTS, LEVEL_GROUPS, LEVELS, LESSON_TYPES, ENQUIRERS } from '../../shared/constants.js'
+import { SUBJECTS, LEVEL_GROUPS, LEVELS, LESSON_TYPES, ENQUIRERS, slotFits } from '../../shared/constants.js'
 import { useLang, shortRange } from '../i18n.jsx'
 import { confettiBurst } from '../confetti.js'
 import { subjectTiles } from '../data.js'
@@ -132,13 +132,13 @@ export default function Wizard() {
   const set = (k, v) => { setError(''); setData((d) => ({ ...d, [k]: v })) }
   const toggleIn = (k, v) => { setError(''); setData((d) => ({ ...d, [k]: d[k].includes(v) ? d[k].filter((x) => x !== v) : [...d[k], v] })) }
 
-  const kindSlots = slots.filter((s) => s.kind === data.lessonType)
+  const kindSlots = slots.filter((s) => slotFits(s.kind, data.lessonType))
   // Only open slots can be sent, even if a picked one has since filled up.
   const pickedSlots = kindSlots.filter((s) => s.status === 'open' && data.slots.includes(s.id))
 
   // Open slots per class type. Unknown until the timetable has loaded.
   const loaded = slotsState === 'ok'
-  const openCount = (k) => slots.filter((s) => s.kind === k && s.status === 'open').length
+  const openCount = (k) => slots.filter((s) => slotFits(s.kind, k) && s.status === 'open').length
   const avail = loaded ? { private: openCount('private'), group: openCount('group') } : null
   const allFull = !!avail && avail.private + avail.group === 0
   // A class type is unavailable when it has no open slots but the other one does.

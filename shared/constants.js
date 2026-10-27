@@ -30,6 +30,10 @@ export const ENQUIRER_LABEL = { parent: 'Parent', student: 'Student' }
 
 export const LESSON_TYPES = ['private', 'group']
 export const LESSON_TYPE_LABEL = { private: 'Private 1-to-1', group: 'Group class' }
+// A timetable slot can also be offered as both, so it shows for either choice.
+export const SLOT_KINDS = ['private', 'group', 'both']
+export const SLOT_KIND_LABEL = { private: 'Private 1-to-1', group: 'Group class', both: '1-to-1 or group' }
+export const slotFits = (kind, lessonType) => kind === lessonType || kind === 'both'
 export const ENQUIRY_STATUSES = ['new', 'contacted', 'confirmed', 'closed']
 
 /** '16:00' → '4:00 PM' */

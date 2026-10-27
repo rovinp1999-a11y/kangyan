@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  WEEKDAYS, WEEKDAYS_SHORT, ENQUIRY_STATUSES, FORMATS, LESSON_TYPES, LESSON_TYPE_LABEL, LEVEL_GROUPS, ENQUIRER_LABEL, formatRange,
+  WEEKDAYS, WEEKDAYS_SHORT, ENQUIRY_STATUSES, FORMATS, LESSON_TYPE_LABEL, SLOT_KINDS, SLOT_KIND_LABEL, LEVEL_GROUPS, ENQUIRER_LABEL, formatRange,
 } from '../../shared/constants.js'
 import { STRINGS, shortRange } from '../i18n.jsx'
 
@@ -441,7 +441,24 @@ function EnquiriesTab({ rows, setRows, onAuthError, notify }) {
 /* timetable                                                           */
 /* ------------------------------------------------------------------ */
 
-function SlotsTab({ slots, setSlots, onAuthError, notify }) {
+const KIND_SHORT = { private: '1-to-1', group: 'Group', both: 'Both' }
+
+function SlotsTab({ slots, setSlots, enquiries, onAuthError, notify }) {
+  // How many enquiries picked each slot, split by the class type they asked for.
+  const interest = useMemo(() => {
+    const m = {}
+    for (const r of enquiries) {
+      if (r.status === 'closed') continue
+      const t = r.lesson_type === 'group' ? 'group' : 'private'
+      for (const p of r.preferred_slots || []) {
+        const c = (m[p.id] ||= { private: 0, group: 0 })
+        c[t]++
+      }
+    }
+    return m
+  }, [enquiries])
+  const groupWant = enquiries.filter((r) => r.lesson_type === 'group' && r.status !== 'closed').length
+
   const [days, setDays] = useState(() => new Set([0]))
   const [start, setStart] = useState('17:30')
   const [end, setEnd] = useState('19:00')
@@ -474,7 +491,7 @@ function SlotsTab({ slots, setSlots, onAuthError, notify }) {
       const added = ok.filter((r) => !r.existed).length
       const existed = ok.length - added
       const parts = []
-      if (added) parts.push(`Added ${LESSON_TYPE_LABEL[kind].toLowerCase()} ${formatRange(start, end)} to ${added} day${added > 1 ? 's' : ''}`)
+      if (added) parts.push(`Added ${SLOT_KIND_LABEL[kind].toLowerCase()} ${formatRange(start, end)} to ${added} day${added > 1 ? 's' : ''}`)
       if (existed) parts.push(`${existed} already existed (left unchanged)`)
       if (failed.length) parts.push(`${failed.length} failed: ${failed[0].reason?.message || 'error'}`)
       notify(parts.join(' · ') || 'Nothing added', failed.length ? 'error' : 'ok')
@@ -501,7 +518,7 @@ function SlotsTab({ slots, setSlots, onAuthError, notify }) {
     setSlots((s) => s.map((x) => (x.id === slot.id ? { ...x, kind: next } : x)))
     try {
       await api('/api/admin/slots', { method: 'PATCH', body: { id: slot.id, kind: next } })
-      notify(`${WEEKDAYS_SHORT[slot.weekday]} ${formatRange(slot.start, slot.end)} is now ${LESSON_TYPE_LABEL[next].toLowerCase()}`)
+      notify(`${WEEKDAYS_SHORT[slot.weekday]} ${formatRange(slot.start, slot.end)} is now ${SLOT_KIND_LABEL[next].toLowerCase()}`)
     } catch (err) {
       setSlots((s) => s.map((x) => (x.id === slot.id ? slot : x)))
       fail(err)
@@ -521,7 +538,7 @@ function SlotsTab({ slots, setSlots, onAuthError, notify }) {
   }
 
   const openCount = slots.filter((s) => s.status === 'open').length
-  const groupCount = slots.filter((s) => s.kind === 'group').length
+  const kindCount = (k) => slots.filter((s) => s.kind === k).length
 
   return (
     <>
@@ -551,9 +568,9 @@ function SlotsTab({ slots, setSlots, onAuthError, notify }) {
         <div className="adm-add__row">
           <span className="adm-add__label">Type</span>
           <div className="kindpick" role="group" aria-label="Class type">
-            {LESSON_TYPES.map((k) => (
+            {SLOT_KINDS.map((k) => (
               <button key={k} type="button" className={`kindpick__b kindpick__b--${k} ${kind === k ? 'is-on' : ''}`} aria-pressed={kind === k} onClick={() => setKind(k)}>
-                {LESSON_TYPE_LABEL[k]}
+                {KIND_SHORT[k]}
               </button>
             ))}
           </div>
@@ -575,9 +592,11 @@ function SlotsTab({ slots, setSlots, onAuthError, notify }) {
       <div className="adm-summary">
         <span><b>{openCount}</b> open</span>
         <span><b>{slots.length - openCount}</b> taken</span>
-        <span><b>{slots.length - groupCount}</b> private</span>
-        <span><b>{groupCount}</b> group</span>
-        <span className="adm-summary__hint">Set each slot to 1-to-1 or Group, and switch it off when it's taken. The enquiry page only shows students the slots that match the class they pick.</span>
+        <span><b>{kindCount('private')}</b> 1-to-1</span>
+        <span><b>{kindCount('group')}</b> group</span>
+        <span><b>{kindCount('both')}</b> both</span>
+        <span><b>{groupWant}</b> want group</span>
+        <span className="adm-summary__hint">Set each slot to 1-to-1, Group or Both, and switch it off when it's taken. A slot set to Both shows for students who pick either class, so you can see how many want a group class. Each slot shows how many open enquiries picked it.</span>
       </div>
 
       <div className="adm-week">
@@ -601,15 +620,21 @@ function SlotsTab({ slots, setSlots, onAuthError, notify }) {
                       <li className={`adm-slot ${isOpen ? '' : 'is-taken'}`} key={s.id}>
                         <div className="adm-slot__top">
                           <span className="adm-slot__time">{range}</span>
+                          {interest[s.id] && (
+                            <span className="adm-slot__want" title="Open enquiries that picked this slot">
+                              {interest[s.id].private > 0 && <span className="want want--private">{interest[s.id].private} 1-to-1</span>}
+                              {interest[s.id].group > 0 && <span className="want want--group">{interest[s.id].group} group</span>}
+                            </span>
+                          )}
                           <button type="button" className="icon-btn icon-btn--danger" aria-label={`Delete ${name} ${range}`} onClick={() => remove(s)}>
                             <Icon name="trash" />
                           </button>
                         </div>
                         <div className="adm-slot__ctrls">
                           <div className="kindpick kindpick--sm" role="group" aria-label={`${name} ${range} class type`}>
-                            {LESSON_TYPES.map((k) => (
+                            {SLOT_KINDS.map((k) => (
                               <button key={k} type="button" className={`kindpick__b kindpick__b--${k} ${s.kind === k ? 'is-on' : ''}`} aria-pressed={s.kind === k} onClick={() => setSlotKind(s, k)}>
-                                {k === 'private' ? '1-to-1' : 'Group'}
+                                {KIND_SHORT[k]}
                               </button>
                             ))}
                           </div>
@@ -758,7 +783,7 @@ export default function AdminPage() {
             {tab === 'enquiries' ? (
               <EnquiriesTab rows={enquiries} setRows={setEnquiries} onAuthError={logout} notify={notify} />
             ) : (
-              <SlotsTab slots={slots} setSlots={setSlots} onAuthError={logout} notify={notify} />
+              <SlotsTab slots={slots} setSlots={setSlots} enquiries={enquiries} onAuthError={logout} notify={notify} />
             )}
           </>
         )}

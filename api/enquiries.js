@@ -52,7 +52,7 @@ export default async function handler(req, res) {
     if (slotIds.length) {
       const rows = await sql`
         SELECT id, weekday, to_char(start_time,'HH24:MI') AS start, to_char(end_time,'HH24:MI') AS "end"
-        FROM availability_slots WHERE id = ANY(${slotIds}) AND kind = ${lessonType} AND status = 'open'
+        FROM availability_slots WHERE id = ANY(${slotIds}) AND kind IN (${lessonType}, 'both') AND status = 'open'
         ORDER BY weekday, start_time`
       preferred = rows.map((r) => ({ id: r.id, label: slotLabel(r), weekday: r.weekday, start: r.start, end: r.end }))
     }

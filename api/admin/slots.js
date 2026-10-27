@@ -1,12 +1,12 @@
 // Admin-only availability management.
 //   POST   { weekday, start, end, kind? } → create an open slot ('private' default)
-//   PATCH  { id, status?, kind? }         → 'open' | 'taken', 'private' | 'group'
+//   PATCH  { id, status?, kind? }         → 'open' | 'taken', 'private' | 'group' | 'both'
 //   DELETE { id }                   → remove
 import { getSql } from '../_db.js'
 import { requireAdmin } from '../_auth.js'
 import { allow, readBody, send, fail, isDbId } from '../_http.js'
 import { SLOT_COLUMNS } from '../slots.js'
-import { SLOT_STATUSES, LESSON_TYPES } from '../../shared/constants.js'
+import { SLOT_STATUSES, SLOT_KINDS } from '../../shared/constants.js'
 
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/
 
@@ -21,7 +21,7 @@ export default async function handler(req, res) {
       const weekday = Number(b.weekday)
       const { start, end } = b
       const kind = b.kind || 'private'
-      if (!LESSON_TYPES.includes(kind)) return fail(res, 400, 'Invalid class type')
+      if (!SLOT_KINDS.includes(kind)) return fail(res, 400, 'Invalid class type')
       if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6) return fail(res, 400, 'Invalid weekday')
       if (!TIME_RE.test(start) || !TIME_RE.test(end)) return fail(res, 400, 'Use 24-hour times like 17:30')
       if (start >= end) return fail(res, 400, 'End time must be after start time')
@@ -51,7 +51,7 @@ export default async function handler(req, res) {
       const kind = b.kind ?? null
       if (status === null && kind === null) return fail(res, 400, 'Nothing to update')
       if (status !== null && !SLOT_STATUSES.includes(status)) return fail(res, 400, 'Invalid status')
-      if (kind !== null && !LESSON_TYPES.includes(kind)) return fail(res, 400, 'Invalid class type')
+      if (kind !== null && !SLOT_KINDS.includes(kind)) return fail(res, 400, 'Invalid class type')
       const rows = await sql.query(
         `UPDATE availability_slots
            SET status = COALESCE($1, status), kind = COALESCE($2, kind)

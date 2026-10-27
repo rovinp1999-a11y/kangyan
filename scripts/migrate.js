@@ -19,7 +19,7 @@ const statements = [
      start_time  TIME NOT NULL,
      end_time    TIME NOT NULL CHECK (end_time > start_time),
      status      TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','taken')),
-     kind        TEXT NOT NULL DEFAULT 'private' CHECK (kind IN ('private','group')),
+     kind        TEXT NOT NULL DEFAULT 'private' CHECK (kind IN ('private','group','both')),
      created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
      UNIQUE (weekday, start_time, end_time)
    )`,
@@ -48,6 +48,9 @@ const statements = [
   `CREATE INDEX IF NOT EXISTS admin_login_attempts_ip_at_idx ON admin_login_attempts (ip, at DESC)`,
   // upgrades for databases created before slot kinds / lesson types existed
   `ALTER TABLE availability_slots ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'private' CHECK (kind IN ('private','group'))`,
+  // slots offered as both 1-to-1 and group
+  `ALTER TABLE availability_slots DROP CONSTRAINT IF EXISTS availability_slots_kind_check`,
+  `ALTER TABLE availability_slots ADD CONSTRAINT availability_slots_kind_check CHECK (kind IN ('private','group','both'))`,
   `ALTER TABLE enquiries ADD COLUMN IF NOT EXISTS lesson_type TEXT NOT NULL DEFAULT 'private' CHECK (lesson_type IN ('private','group'))`,
   `ALTER TABLE enquiries ALTER COLUMN email DROP NOT NULL`,
   `ALTER TABLE enquiries ADD COLUMN IF NOT EXISTS location TEXT`,
