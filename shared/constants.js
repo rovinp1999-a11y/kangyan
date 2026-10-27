@@ -2,10 +2,14 @@
 
 export const SUBJECTS = ['Physics', 'Chemistry', 'Biology', 'Science', 'Mathematics']
 
-export const LEVELS = [
-  'Form 1', 'Form 2', 'Form 3', 'Form 4', 'Form 5',
-  'IGCSE Year 10', 'IGCSE Year 11', 'Other',
+// Levels grouped by school system. 独中 (Chinese independent, UEC) comes first.
+export const LEVEL_GROUPS = [
+  { key: 'uec', levels: ['UEC Junior 1', 'UEC Junior 2', 'UEC Junior 3', 'UEC Senior 1', 'UEC Senior 2', 'UEC Senior 3'] },
+  { key: 'kssm', levels: ['Form 1', 'Form 2', 'Form 3', 'Form 4', 'Form 5'] },
+  { key: 'igcse', levels: ['IGCSE Year 10', 'IGCSE Year 11'] },
+  { key: 'other', levels: ['Other'] },
 ]
+export const LEVELS = LEVEL_GROUPS.flatMap((g) => g.levels)
 
 export const FORMATS = [
   { value: 'online', label: 'Online' },

@@ -9,12 +9,12 @@ const KEY = 'kangyan-lang'
 const en = {
   htmlLang: 'en',
   meta: {
-    title: 'Kangyan | SPM & IGCSE Science and Maths Tuition Enquiry',
-    description: 'Book Physics, Chemistry, Biology, Science or Maths tuition for Form 1–5 (KSSM), SPM and IGCSE. Private 1-to-1 or group classes on weekday evenings. Reply within 48 hours.',
+    title: 'Kangyan | UEC, SPM & IGCSE Science and Maths Tuition Enquiry',
+    description: 'Book Physics, Chemistry, Biology, Science or Maths tuition for Chinese independent schools (UEC Junior and Senior), SPM and IGCSE. Private 1-to-1 or group classes on weekday evenings. Reply within 48 hours.',
   },
   nav: { switchLabel: 'Language / 语言' },
   intro: {
-    eyebrow: 'SPM & IGCSE · Science & Maths tuition',
+    eyebrow: 'UEC · SPM · IGCSE · Science & Maths tuition',
     title: ['Book a tuition slot in ', 'under a minute', '.'],
     sub: "Answer a few quick questions. I'll reply within 48 hours. Free, no commitment.",
   },
@@ -37,7 +37,7 @@ const en = {
       private: { title: 'Private 1-to-1', desc: "Lessons built around one student's pace and gaps." },
       group: { title: 'Group class', desc: 'Learn alongside a few students at the same level.' },
     },
-    level: { q: (n) => `Which level is ${n} in?`, help: 'Malaysian KSSM or Cambridge IGCSE.' },
+    level: { q: (n) => `Which level is ${n} in?`, help: 'Chinese independent school (UEC), national school (SPM) or IGCSE.' },
     subjects: { q: 'Which subjects do you need help with?', help: 'Pick one or more.' },
     times: {
       q: 'Which times suit you?',
@@ -61,7 +61,7 @@ const en = {
       email: 'Email',
       message: 'Anything I should know?',
       optional: 'optional',
-      messagePh: 'e.g. Form 4, finds electricity hard, sitting SPM next year',
+      messagePh: 'e.g. Senior 2, finds electricity hard, sitting UEC next year',
       summary: 'Your enquiry',
       flexible: 'Flexible on time',
       needContact: 'Please add a WhatsApp number or an email.',
@@ -71,7 +71,6 @@ const en = {
     done: {
       title: (n) => `Thanks, ${n}!`,
       text: "Your enquiry is in. I'll reply within 48 hours with a suggested time and the fees.",
-      whatsapp: "Can't wait? Message me on WhatsApp",
       again: 'Start a new enquiry',
     },
   },
@@ -79,7 +78,12 @@ const en = {
   labels: {
     lessonTypes: { private: 'Private 1-to-1', group: 'Group class' },
     subjects: { Physics: 'Physics', Chemistry: 'Chemistry', Biology: 'Biology', Science: 'Science', Mathematics: 'Maths' },
-    levels: {},
+    levelGroups: { uec: 'Chinese independent · UEC', kssm: 'National school · SPM', igcse: 'International · IGCSE', other: 'Other' },
+    levels: {
+      'UEC Junior 1': 'Junior 1', 'UEC Junior 2': 'Junior 2', 'UEC Junior 3': 'Junior 3',
+      'UEC Senior 1': 'Senior 1', 'UEC Senior 2': 'Senior 2', 'UEC Senior 3': 'Senior 3',
+      'IGCSE Year 10': 'Year 10', 'IGCSE Year 11': 'Year 11',
+    },
     formats: { online: 'Online', 'in-person': 'In person', either: 'Online or in person' },
     weekdays: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
     weekdaysShort: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
@@ -89,12 +93,12 @@ const en = {
 const zh = {
   htmlLang: 'zh-Hans',
   meta: {
-    title: 'Kangyan | SPM 与 IGCSE 科学和数学补习咨询',
-    description: '预约中一至中五（KSSM）、SPM 及 IGCSE 的物理、化学、生物、科学或数学补习。平日晚上一对一私人课或小组课，48 小时内回复。',
+    title: 'Kangyan | 独中统考、SPM 与 IGCSE 理科和数学补习',
+    description: '预约独中初中、高中（统考）以及国中 SPM、IGCSE 的物理、化学、生物、科学和数学补习。平日晚上一对一私人课或小组课，48 小时内回复。',
   },
   nav: { switchLabel: 'Language / 语言' },
   intro: {
-    eyebrow: 'SPM 与 IGCSE · 科学与数学补习',
+    eyebrow: '独中统考 · SPM · IGCSE · 理科与数学补习',
     title: ['', '一分钟内', '预约补习时段。'],
     sub: '回答几个简单问题，我会在 48 小时内回复。免费咨询，无需承诺。',
   },
@@ -117,7 +121,7 @@ const zh = {
       private: { title: '一对一私人课', desc: '按学生的进度和弱点度身安排。' },
       group: { title: '小组课', desc: '和几位同年级的学生一起学习。' },
     },
-    level: { q: (n) => `${n}现在读几年级？`, help: '马来西亚 KSSM 或 Cambridge IGCSE。' },
+    level: { q: (n) => `${n}现在读哪一级？`, help: '独中、国中或国际学校都可以。' },
     subjects: { q: '需要补习哪些科目？', help: '可以多选。' },
     times: {
       q: '哪些时间适合你？',
@@ -141,7 +145,7 @@ const zh = {
       email: '电邮',
       message: '还有什么需要我知道的吗？',
       optional: '可选',
-      messagePh: '例如：中四，电学比较弱，明年考 SPM',
+      messagePh: '例如：高二，电学比较弱，明年考统考',
       summary: '你的咨询',
       flexible: '时间都可以',
       needContact: '请填写 WhatsApp 号码或电邮。',
@@ -151,7 +155,6 @@ const zh = {
     done: {
       title: (n) => `谢谢你，${n}！`,
       text: '你的咨询已送出。我会在 48 小时内回复，提供建议的上课时间和学费。',
-      whatsapp: '等不及？直接 WhatsApp 我',
       again: '重新开始咨询',
     },
   },
@@ -159,9 +162,12 @@ const zh = {
   labels: {
     lessonTypes: { private: '一对一私人课', group: '小组课' },
     subjects: { Physics: '物理', Chemistry: '化学', Biology: '生物', Science: '科学', Mathematics: '数学' },
+    levelGroups: { uec: '独中（统考）', kssm: '国中（SPM）', igcse: '国际学校（IGCSE）', other: '其他' },
     levels: {
+      'UEC Junior 1': '初一', 'UEC Junior 2': '初二', 'UEC Junior 3': '初三',
+      'UEC Senior 1': '高一', 'UEC Senior 2': '高二', 'UEC Senior 3': '高三',
       'Form 1': '中一', 'Form 2': '中二', 'Form 3': '中三', 'Form 4': '中四', 'Form 5': '中五',
-      'IGCSE Year 10': 'IGCSE 十年级', 'IGCSE Year 11': 'IGCSE 十一年级', Other: '其他',
+      'IGCSE Year 10': '十年级', 'IGCSE Year 11': '十一年级', Other: '其他',
     },
     formats: { online: '线上', 'in-person': '面对面', either: '线上或面对面' },
     weekdays: ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日'],

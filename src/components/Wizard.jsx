@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { SUBJECTS, LEVELS } from '../../shared/constants.js'
+import { SUBJECTS, LEVEL_GROUPS } from '../../shared/constants.js'
 import { useLang, shortRange } from '../i18n.jsx'
 import { confettiBurst } from '../confetti.js'
-import { subjectTiles, CONTACT } from '../data.js'
+import { subjectTiles } from '../data.js'
 
 // One-question-at-a-time enquiry flow:
 // name → private/group → level → subjects → times (filtered by class type)
@@ -166,7 +166,6 @@ export default function Wizard() {
           <h2 tabIndex={-1}>{w.done.title(done)}</h2>
           <p className="wz__help">{w.done.text}</p>
           <div className="wz__doneacts">
-            <a className="btn btn--accent" href={CONTACT.whatsapp} target="_blank" rel="noopener noreferrer">{w.done.whatsapp}</a>
             <button type="button" className="btn btn--ghost" onClick={() => { moved.current = true; setDone(null) }}>{w.done.again}</button>
           </div>
         </div>
@@ -212,11 +211,18 @@ export default function Wizard() {
         <>
           <h2 tabIndex={-1}>{w.level.q(name)}</h2>
           <p className="wz__help">{w.level.help}</p>
-          <div className="wz__grid">
-            {LEVELS.map((l) => (
-              <button type="button" key={l} className={`wz__opt ${data.level === l ? 'is-on' : ''}`} aria-pressed={data.level === l} onClick={() => choose('level', l)}>
-                {L.levels[l] || l}
-              </button>
+          <div className="wz__levels">
+            {LEVEL_GROUPS.map((g) => (
+              <div className="wz__lgroup" key={g.key} role="group" aria-label={L.levelGroups[g.key]}>
+                {g.key !== 'other' && <span className="wz__lhead">{L.levelGroups[g.key]}</span>}
+                <div className={`wz__grid wz__grid--${g.key}`}>
+                  {g.levels.map((l) => (
+                    <button type="button" key={l} className={`wz__opt ${data.level === l ? 'is-on' : ''}`} aria-pressed={data.level === l} onClick={() => choose('level', l)}>
+                      {L.levels[l] || l}
+                    </button>
+                  ))}
+                </div>
+              </div>
             ))}
           </div>
         </>
