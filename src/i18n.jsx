@@ -25,7 +25,7 @@ const en = {
     skip: 'Skip',
     sending: 'Sending…',
     submit: 'Send enquiry',
-    failed: 'Something went wrong. Please try again, or message me on WhatsApp.',
+    failed: 'Something went wrong. Please try again in a moment.',
     name: {
       q: "What's the student's name?",
       help: "Let's find the right class. This takes about a minute.",
@@ -109,7 +109,7 @@ const zh = {
     skip: '跳过',
     sending: '发送中…',
     submit: '发送咨询',
-    failed: '发送失败，请稍后再试，或直接 WhatsApp 我。',
+    failed: '发送失败，请稍后再试。',
     name: {
       q: '学生叫什么名字？',
       help: '帮你找到合适的课，大约一分钟完成。',

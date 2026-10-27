@@ -11,6 +11,4 @@ export const subjectTiles = {
 
 export const CONTACT = {
   email: 'girlychangkangyan@gmail.com',
-  whatsapp: 'https://wa.me/60162241099',
-  instagram: 'https://instagram.com/kangyan1204',
 }
