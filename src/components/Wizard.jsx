@@ -10,17 +10,39 @@ import { subjectTiles } from '../data.js'
 const STEPS = ['name', 'type', 'level', 'subjects', 'times', 'format', 'contact']
 const DRAFT_KEY = 'kangyan-enquiry-draft'
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-const EMPTY = { name: '', lessonType: '', level: '', subjects: [], slots: [], format: '', phone: '', email: '', message: '', website: '' }
+const EMPTY = { name: '', lessonType: '', level: '', subjects: [], slots: [], format: '', location: '', phone: '', email: '', message: '', website: '' }
 
 const loadDraft = () => {
   try {
     const d = JSON.parse(sessionStorage.getItem(DRAFT_KEY) || 'null')
-    if (d && typeof d === 'object' && d.data) return { step: Math.min(Math.max(0, d.step | 0), STEPS.length - 1), data: { ...EMPTY, ...d.data } }
+    if (d && typeof d === 'object' && d.data) {
+      const data = { ...EMPTY, ...d.data }
+      const step = Math.min(Math.max(0, d.step | 0), STEPS.length - 1)
+      return { step: firstGap(data, step), data }
+    }
   } catch { /* ignore */ }
   return { step: 0, data: EMPTY }
 }
 
 const firstName = (n) => n.trim().split(/\s+/)[0] || n.trim()
+
+// Does each step have what it needs? (times is optional, contact is checked on submit)
+const stepValid = (d) => ({
+  name: d.name.trim().length >= 2,
+  type: !!d.lessonType,
+  level: !!d.level,
+  subjects: d.subjects.length > 0,
+  times: true,
+  format: !!d.format && (d.format !== 'in-person' || d.location.trim().length >= 2), // 2 so 蕉赖 counts
+  contact: true,
+})
+
+// A restored draft must not land past an unanswered question.
+const firstGap = (d, upTo) => {
+  const v = stepValid(d)
+  for (let i = 0; i < upTo; i++) if (!v[STEPS[i]]) return i
+  return upTo
+}
 
 function Icon({ d }) {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d={d} /></svg>
@@ -86,17 +108,26 @@ export default function Wizard() {
   const toggleIn = (k, v) => setData((d) => ({ ...d, [k]: d[k].includes(v) ? d[k].filter((x) => x !== v) : [...d[k], v] }))
 
   const kindSlots = slots.filter((s) => s.kind === data.lessonType)
-  const pickedSlots = kindSlots.filter((s) => data.slots.includes(s.id))
+  // Only open slots can be sent, even if a picked one has since filled up.
+  const pickedSlots = kindSlots.filter((s) => s.status === 'open' && data.slots.includes(s.id))
 
-  const valid = {
-    name: data.name.trim().length >= 2,
-    type: !!data.lessonType,
-    level: !!data.level,
-    subjects: data.subjects.length > 0,
-    times: true,
-    format: !!data.format,
-    contact: true,
-  }
+  // Open slots per class type. Unknown until the timetable has loaded.
+  const loaded = slotsState === 'ok'
+  const openCount = (k) => slots.filter((s) => s.kind === k && s.status === 'open').length
+  const avail = loaded ? { private: openCount('private'), group: openCount('group') } : null
+  const allFull = !!avail && avail.private + avail.group === 0
+  // A class type is unavailable when it has no open slots but the other one does.
+  const typeOff = (k) => !!avail && !allFull && avail[k] === 0
+
+  const valid = stepValid(data)
+
+  // If the chosen class type has become unavailable (e.g. a restored draft), clear it
+  // and bring the student back to that question.
+  useEffect(() => {
+    if (!avail || !data.lessonType || !typeOff(data.lessonType)) return
+    setData((d) => ({ ...d, lessonType: '', slots: [] }))
+    if (step > 1) { setDir('back'); setStep(1) }
+  }, [slotsState]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const go = (to) => {
     clearTimeout(advanceTimer.current)
@@ -110,9 +141,18 @@ export default function Wizard() {
 
   // Single-choice steps move on by themselves after a short beat.
   const choose = (k, v) => {
-    set(k, v)
+    setData((d) => ({ ...d, [k]: v, ...(k === 'lessonType' && d.lessonType !== v ? { slots: [] } : {}) }))
     clearTimeout(advanceTimer.current)
     advanceTimer.current = setTimeout(() => go(step + 1), 260)
+  }
+  // Lesson mode: online moves on; in person / either need a location first.
+  const chooseFormat = (k) => {
+    if (k === 'online') return choose('format', k)
+    clearTimeout(advanceTimer.current)
+    set('format', k)
+  }
+  const switchToPrivate = () => {
+    setData((d) => ({ ...d, lessonType: 'private', slots: [] }))
   }
 
   const submit = async () => {
@@ -121,6 +161,8 @@ export default function Wizard() {
     if (!phone && !email) return setError(w.contact.needContact)
     if (email && !EMAIL_RE.test(email)) return setError(w.contact.badEmail)
     if (phone && phone.replace(/\D/g, '').length < 8) return setError(w.contact.badPhone)
+    const gap = firstGap(data, STEPS.length - 1)
+    if (gap < STEPS.length - 1) return go(gap)
     setBusy(true)
     setError('')
     try {
@@ -130,6 +172,8 @@ export default function Wizard() {
         body: JSON.stringify({
           name: data.name, email, phone, level: data.level, subjects: data.subjects,
           format: data.format || 'either', lessonType: data.lessonType, message: data.message,
+          location: data.format === 'online' ? '' : data.location.trim(),
+          lang,
           preferredSlots: pickedSlots.map((s) => s.id), website: data.website,
         }),
       })
@@ -196,13 +240,30 @@ export default function Wizard() {
           <h2 tabIndex={-1}>{w.type.q(name)}</h2>
           <p className="wz__help">{w.type.help}</p>
           <div className="wz__cards">
-            {['private', 'group'].map((k) => (
-              <button type="button" key={k} className={`wz__card ${data.lessonType === k ? 'is-on' : ''}`} aria-pressed={data.lessonType === k} onClick={() => choose('lessonType', k)}>
-                <span className="wz__cardic" data-k={k}><Icon d={k === 'private' ? ICON.one : ICON.group} /></span>
-                <span className="wz__cardtxt"><strong>{w.type[k].title}</strong><span>{w.type[k].desc}</span></span>
-              </button>
-            ))}
+            {['private', 'group'].map((k) => {
+              const off = typeOff(k)
+              return (
+                <button
+                  type="button"
+                  key={k}
+                  className={`wz__card ${data.lessonType === k ? 'is-on' : ''} ${off ? 'is-off' : ''}`}
+                  aria-pressed={data.lessonType === k}
+                  disabled={off}
+                  onClick={() => choose('lessonType', k)}
+                >
+                  <span className="wz__cardic" data-k={k}><Icon d={k === 'private' ? ICON.one : ICON.group} /></span>
+                  <span className="wz__cardtxt">
+                    <strong>{w.type[k].title}</strong>
+                    <span>{off ? w.type.unavailable : w.type[k].desc}</span>
+                  </span>
+                  {off && <span className="wz__badge">{w.type.fullBadge}</span>}
+                </button>
+              )
+            })}
           </div>
+          {typeOff('group') && <p className="wz__note">{w.type.noGroup}</p>}
+          {typeOff('private') && <p className="wz__note">{w.type.noPrivate}</p>}
+          {allFull && <p className="wz__note">{w.type.allFull}</p>}
         </>
       )
       break
@@ -256,7 +317,15 @@ export default function Wizard() {
           <p className="wz__help">{w.times.help[data.lessonType] || w.times.help.private}</p>
           {slotsState === 'loading' && <p className="wz__note">{w.times.loading}</p>}
           {slotsState === 'error' && <p className="wz__note">{w.times.error}</p>}
-          {slotsState === 'ok' && days.length === 0 && <p className="wz__note">{w.times.empty(typeLabel)}</p>}
+          {loaded && days.length === 0 && (
+            <div className="wz__note">
+              <p>{data.lessonType === 'group' && avail.private > 0 ? w.times.noGroup : w.times.empty(typeLabel)}</p>
+              {data.lessonType === 'group' && avail.private > 0 && (
+                <button type="button" className="btn btn--ghost btn--sm wz__notebtn" onClick={switchToPrivate}>{w.times.switchPrivate}</button>
+              )}
+            </div>
+          )}
+          {loaded && days.length > 0 && openCount(data.lessonType) === 0 && <p className="wz__note">{w.times.allTaken(typeLabel)}</p>}
           {days.length > 0 && (
             <div className="wz__tt">
               {days.map(({ d, list }) => (
@@ -265,7 +334,7 @@ export default function Wizard() {
                   <div className="wz__ttslots">
                     {list.map((s) => {
                       const taken = s.status === 'taken'
-                      const on = data.slots.includes(s.id)
+                      const on = !taken && data.slots.includes(s.id)
                       const label = shortRange(s.start, s.end, lang)
                       return (
                         <button
@@ -297,12 +366,31 @@ export default function Wizard() {
           <h2 tabIndex={-1}>{w.format.q}</h2>
           <div className="wz__cards wz__cards--3">
             {['online', 'in-person', 'either'].map((k) => (
-              <button type="button" key={k} className={`wz__card ${data.format === k ? 'is-on' : ''}`} aria-pressed={data.format === k} onClick={() => choose('format', k)}>
+              <button type="button" key={k} className={`wz__card ${data.format === k ? 'is-on' : ''}`} aria-pressed={data.format === k} onClick={() => chooseFormat(k)}>
                 <span className="wz__cardic" data-k={k}><Icon d={k === 'online' ? ICON.online : k === 'in-person' ? ICON.person : ICON.either} /></span>
                 <span className="wz__cardtxt"><strong>{w.format.opts[k][0]}</strong><span>{w.format.opts[k][1]}</span></span>
               </button>
             ))}
           </div>
+          {(data.format === 'in-person' || data.format === 'either') && (
+            <label className="wz__field wz__loc">
+              <span>
+                {w.format.location}{' '}
+                {data.format === 'either' && <small>{w.contact.optional}</small>}
+              </span>
+              <input
+                className="wz__input"
+                type="text"
+                autoComplete="address-level2"
+                placeholder={w.format.locationPh}
+                value={data.location}
+                onChange={(e) => set('location', e.target.value)}
+                maxLength={200}
+                autoFocus
+              />
+              <small className="wz__hint">{w.format.locationHint}</small>
+            </label>
+          )}
         </>
       )
       break
@@ -312,7 +400,7 @@ export default function Wizard() {
         { label: L.levels[data.level] || data.level, to: 2 },
         { label: data.subjects.map((s) => L.subjects[s]).join(' · '), to: 3 },
         { label: pickedSlots.length ? w.times.picked(pickedSlots.length) : w.contact.flexible, to: 4 },
-        { label: L.formats[data.format] || L.formats.either, to: 5 },
+        { label: (L.formats[data.format] || L.formats.either) + (data.format !== 'online' && data.location.trim() ? ` · ${data.location.trim()}` : ''), to: 5 },
       ]
       body = (
         <>
@@ -349,13 +437,15 @@ export default function Wizard() {
   }
 
   const isLast = id === 'contact'
-  const optionalStep = id === 'times'
+  const optionalStep = id === 'times' && days.length > 0 && openCount(data.lessonType) > 0
   const autoStep = id === 'type' || id === 'level' || id === 'format'
+  // Auto-advancing steps only show Continue once something is chosen.
+  const chosen = { type: data.lessonType, level: data.level, format: data.format }[id]
 
   return (
     <form className="wz" onSubmit={onSubmit} noValidate>
       <div className="wz__top">
-        <button type="button" className="wz__back" onClick={back} disabled={step === 0} aria-label={w.back}>
+        <button type="button" className="wz__back" onClick={back} disabled={step === 0 || busy} aria-label={w.back}>
           <Icon d={ICON.back} />
         </button>
         <div className="wz__progress" role="progressbar" aria-valuemin={1} aria-valuemax={STEPS.length} aria-valuenow={step + 1} aria-label={w.stepOf(step + 1, STEPS.length)}>
@@ -376,7 +466,7 @@ export default function Wizard() {
             {w.times.flexible}
           </button>
         )}
-        {(!autoStep || valid[id]) && (
+        {(!autoStep || chosen) && (
           <button type="submit" className={`btn btn--accent ${isLast ? 'wz__submit' : ''}`} disabled={!valid[id] || busy}>
             {isLast ? (busy ? w.sending : w.submit) : w.next}
             {!isLast && <Icon d={ICON.next} />}

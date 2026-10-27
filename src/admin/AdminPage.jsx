@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  WEEKDAYS, WEEKDAYS_SHORT, ENQUIRY_STATUSES, FORMATS, LESSON_TYPES, LESSON_TYPE_LABEL, formatRange,
+  WEEKDAYS, WEEKDAYS_SHORT, ENQUIRY_STATUSES, FORMATS, LESSON_TYPES, LESSON_TYPE_LABEL, LEVEL_GROUPS, formatRange,
 } from '../../shared/constants.js'
+import { STRINGS, shortRange } from '../i18n.jsx'
 
 /* ------------------------------------------------------------------ */
 /* helpers                                                             */
@@ -57,10 +58,56 @@ const initials = (name) =>
   name.trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase()
 
 /** Malaysian-friendly wa.me link: strips symbols, turns a leading 0 into 60. */
-function waLink(phone) {
+function waLink(phone, text = '') {
   let d = phone.replace(/\D/g, '')
   if (d.startsWith('0')) d = `60${d.slice(1)}`
-  return `https://wa.me/${d}`
+  return `https://wa.me/${d}${text ? `?text=${encodeURIComponent(text)}` : ''}`
+}
+
+/** Drafted first reply for an enquiry, in the language the enquiry was sent in. */
+export function draftMessage(r) {
+  const zh = r.lang === 'zh'
+  const L = STRINGS[zh ? 'zh' : 'en'].labels
+  const name = r.student_name.trim()
+  const first = zh ? name : name.split(/\s+/)[0]
+  const group = LEVEL_GROUPS.find((g) => g.levels.includes(r.level))?.key
+  const level = zh
+    ? `${L.levels[r.level] || r.level}${{ uec: '（独中）', kssm: '（国中）', igcse: '（IGCSE）' }[group] || ''}`
+    : r.level
+  const subjects = r.subjects.map((x) => (zh ? L.subjects[x] : x) || x).join(zh ? '、' : ', ')
+  const slots = (r.preferred_slots || []).map((x) =>
+    x.weekday != null && x.start ? `${L.weekdaysShort[x.weekday]} ${shortRange(x.start, x.end, zh ? 'zh' : 'en')}` : x.label)
+  const times = slots.length ? slots.join(zh ? '、' : ', ') : zh ? '时间都可以' : 'flexible'
+  const type = zh ? (r.lesson_type === 'group' ? '小组课' : '一对一私人课') : LESSON_TYPE_LABEL[r.lesson_type] || LESSON_TYPE_LABEL.private
+  const fmt = L.formats[r.format] || L.formats.either
+  const where = r.location ? (zh ? `（${r.location}）` : ` (${r.location})`) : ''
+
+  if (zh) {
+    return [
+      `你好！我是 Kangyan，教理科和数学的补习老师。谢谢你留下${first}的补习资料。`,
+      '',
+      '我这边收到的是：',
+      `• ${type}`,
+      `• ${level}`,
+      `• 科目：${subjects}`,
+      `• 偏好时间：${times}`,
+      `• 上课方式：${fmt}${where}`,
+      '',
+      '想跟你确认一下上课时间，顺便说明学费。请问什么时候方便聊聊？',
+    ].join('\n')
+  }
+  return [
+    `Hi! This is Kangyan, the Science & Maths tutor. Thank you for your tuition enquiry for ${first}.`,
+    '',
+    "Here's what I received:",
+    `• ${type}`,
+    `• ${level}`,
+    `• Subjects: ${subjects}`,
+    `• Preferred time: ${times}`,
+    `• Lessons: ${fmt}${where}`,
+    '',
+    "I'd love to confirm a lesson time with you and share the fees. When is a good time to chat?",
+  ].join('\n')
 }
 
 const sortSlots = (list) =>
@@ -85,6 +132,7 @@ const ICONS = {
   trash: 'M3 6h18 M8 6V4h8v2 M19 6l-1 14H6L5 6',
   sort: 'M3 6h18 M6 12h12 M10 18h4',
   plus: 'M12 5v14 M5 12h14',
+  pin: 'M12 21s-7-6.2-7-11.5A7 7 0 0112 2.5a7 7 0 017 7C19 14.8 12 21 12 21z M12 12a2.5 2.5 0 100-5 2.5 2.5 0 000 5z',
 }
 
 function Icon({ name, className = '' }) {
@@ -254,6 +302,10 @@ function EnquiryCard({ r, onStatus, notify }) {
         <span className="tag-f">{FORMAT_LABEL[r.format] || r.format}</span>
       </div>
 
+      {r.location && (
+        <p className="enq__loc"><Icon name="pin" />{r.location}</p>
+      )}
+
       <div className="enq__slots">
         <span className="enq__k">Prefers</span>
         {r.preferred_slots.length
@@ -278,9 +330,9 @@ function EnquiryCard({ r, onStatus, notify }) {
 
       <footer className="enq__actions">
         {r.phone && (
-          <a className="act act--wa" href={waLink(r.phone)} target="_blank" rel="noopener noreferrer"><Icon name="chat" />WhatsApp</a>
+          <a className="act act--wa" href={waLink(r.phone, draftMessage(r))} target="_blank" rel="noopener noreferrer" title="Opens WhatsApp with a drafted reply you can edit"><Icon name="chat" />WhatsApp</a>
         )}
-        {r.email && <a className="act" href={`mailto:${r.email}?subject=${subject}`}><Icon name="mail" />Email</a>}
+        {r.email && <a className="act" href={`mailto:${r.email}?subject=${subject}&body=${encodeURIComponent(draftMessage(r))}`}><Icon name="mail" />Email</a>}
         {r.phone && <a className="act" href={`tel:${r.phone}`}><Icon name="phone" />Call</a>}
         <button type="button" className="act" onClick={copy}><Icon name="copy" />{r.email ? 'Copy email' : 'Copy number'}</button>
       </footer>
@@ -303,11 +355,18 @@ function EnquiriesTab({ rows, setRows, onAuthError, notify }) {
     const list = rows.filter((r) => {
       if (filter !== 'all' && r.status !== filter) return false
       if (!needle) return true
-      return [r.student_name, r.email, r.phone, r.level, r.message, LESSON_TYPE_LABEL[r.lesson_type], ...r.subjects]
+      return [r.student_name, r.email, r.phone, r.level, r.message, r.location, LESSON_TYPE_LABEL[r.lesson_type], ...r.subjects]
         .filter(Boolean)
         .some((v) => v.toLowerCase().includes(needle))
     })
-    return sort === 'newest' ? list : [...list].reverse()
+    // New enquiries always come first; within each group, sort by date.
+    const t = (r) => new Date(r.created_at).getTime()
+    return [...list].sort((a, b) => {
+      const an = a.status === 'new' ? 0 : 1
+      const bn = b.status === 'new' ? 0 : 1
+      if (an !== bn) return an - bn
+      return sort === 'newest' ? t(b) - t(a) : t(a) - t(b)
+    })
   }, [rows, filter, q, sort])
 
   const setStatus = async (id, status) => {
@@ -345,7 +404,7 @@ function EnquiriesTab({ rows, setRows, onAuthError, notify }) {
       <div className="adm-tools">
         <label className="adm-search">
           <Icon name="search" />
-          <input type="search" placeholder="Search name, email, subject…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search enquiries" />
+          <input type="search" placeholder="Search name, area, subject…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search enquiries" />
         </label>
         <button type="button" className="adm-sort" onClick={() => setSort((s) => (s === 'newest' ? 'oldest' : 'newest'))} aria-label={`Sort: ${sort} first`}>
           <Icon name="sort" />
