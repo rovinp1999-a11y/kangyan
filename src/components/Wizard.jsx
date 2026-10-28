@@ -4,13 +4,13 @@ import { useLang, shortRange } from '../i18n.jsx'
 import { confettiBurst } from '../confetti.js'
 import { subjectTiles } from '../data.js'
 import SchoolPicker from './SchoolPicker.jsx'
-import TimeFiller, { DAY_START, DAY_END } from './TimeFiller.jsx'
+import DayParts, { DAY_START, DAY_END } from './DayParts.jsx'
 
 // One-question-at-a-time enquiry flow:
 // parent or student → name → level → private/group (priced for that level) → school → subjects
 // → online/in person → times → contact + note → done.
 // Times depend on the lesson mode: online picks from the timetable (filtered by class type);
-// in person lets the student fill in their own times, since those lessons are arranged separately.
+// in person asks which days and times of day suit them, since those lessons are arranged separately.
 const STEPS = ['who', 'name', 'level', 'type', 'school', 'subjects', 'format', 'times', 'contact']
 const at = (id) => STEPS.indexOf(id)
 const DRAFT_KEY = 'kangyan-enquiry-draft'
@@ -393,7 +393,7 @@ export default function Wizard() {
           <h2 tabIndex={-1}>{w.times.custom.q}</h2>
           <p className="wz__note wz__note--top">{w.times.custom.limited}</p>
           <p className="wz__help">{w.times.custom.help}</p>
-          <TimeFiller value={data.customTimes} onChange={(v) => set('customTimes', v)} t={w.times.custom} L={L} lang={lang} />
+          <DayParts value={data.customTimes} onChange={(v) => set('customTimes', v)} t={w.times.custom} L={L} />
         </>
       ) : (
         <>
