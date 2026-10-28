@@ -4,11 +4,13 @@ import Wizard from './components/Wizard.jsx'
 import MoleculeField from './components/MoleculeField.jsx'
 import Doodles from './components/Doodles.jsx'
 import LanguageGate from './components/LanguageGate.jsx'
-import AdminPage from './admin/AdminPage.jsx'
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { LangProvider, useLang, onZhPath } from './i18n.jsx'
 import SeoStrip from './components/SeoStrip.jsx'
 import Faq from './components/Faq.jsx'
+
+// The dashboard is only for the tutor, so visitors never download it.
+const AdminPage = lazy(() => import('./admin/AdminPage.jsx'))
 
 // Ask for a language once per visit (tab session). A refresh mid-enquiry doesn't ask
 // again, and links that already say ?lang=en / ?lang=zh skip the question.
@@ -79,7 +81,7 @@ function EnquiryPage() {
 }
 
 export default function App() {
-  if (window.location.pathname.replace(/\/+$/, '') === '/admin') return <AdminPage />
+  if (window.location.pathname.replace(/\/+$/, '') === '/admin') return <Suspense fallback={null}><AdminPage /></Suspense>
   return (
     <LangProvider>
       <EnquiryPage />
