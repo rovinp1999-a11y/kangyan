@@ -1,6 +1,6 @@
 // Admin-only availability management.
 //   POST   { weekday, start, end, kind? } → create an open slot ('private' default)
-//   PATCH  { id, status?, kind? }         → 'open' | 'taken', 'private' | 'group' | 'both'
+//   PATCH  { id, status?, kind?, weekday?, start?, end? } → change status, class type or day/time
 //   DELETE { id }                   → remove
 import { getSql } from '../_db.js'
 import { requireAdmin } from '../_auth.js'
@@ -49,15 +49,29 @@ export default async function handler(req, res) {
     if (req.method === 'PATCH') {
       const status = b.status ?? null
       const kind = b.kind ?? null
-      if (status === null && kind === null) return fail(res, 400, 'Nothing to update')
+      const weekday = b.weekday ?? null
+      const start = b.start ?? null
+      const end = b.end ?? null
+      if ([status, kind, weekday, start, end].every((v) => v === null)) return fail(res, 400, 'Nothing to update')
       if (status !== null && !SLOT_STATUSES.includes(status)) return fail(res, 400, 'Invalid status')
       if (kind !== null && !SLOT_KINDS.includes(kind)) return fail(res, 400, 'Invalid class type')
-      const rows = await sql.query(
-        `UPDATE availability_slots
-           SET status = COALESCE($1, status), kind = COALESCE($2, kind)
-         WHERE id = $3 RETURNING ${SLOT_COLUMNS}`,
-        [status, kind, id],
-      )
+      if (weekday !== null && !(Number.isInteger(weekday) && weekday >= 0 && weekday <= 6)) return fail(res, 400, 'Invalid weekday')
+      if ((start !== null && !TIME_RE.test(start)) || (end !== null && !TIME_RE.test(end))) return fail(res, 400, 'Use 24-hour times like 17:30')
+      if (start !== null && end !== null && start >= end) return fail(res, 400, 'End time must be after start time')
+      let rows
+      try {
+        rows = await sql.query(
+          `UPDATE availability_slots
+             SET status = COALESCE($1, status), kind = COALESCE($2, kind),
+                 weekday = COALESCE($3, weekday), start_time = COALESCE($4::time, start_time), end_time = COALESCE($5::time, end_time)
+           WHERE id = $6 RETURNING ${SLOT_COLUMNS}`,
+          [status, kind, weekday, start, end, id],
+        )
+      } catch (err) {
+        if (err.code === '23505') return fail(res, 409, 'There is already a slot at that day and time')
+        if (err.code === '23514') return fail(res, 400, 'End time must be after start time')
+        throw err
+      }
       if (!rows.length) return fail(res, 404, 'Slot not found')
       return send(res, 200, { ok: true, slot: rows[0] })
     }

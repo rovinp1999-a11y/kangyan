@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  WEEKDAYS, WEEKDAYS_SHORT, ENQUIRY_STATUSES, FORMATS, LESSON_TYPE_LABEL, SLOT_KINDS, SLOT_KIND_LABEL, LEVEL_GROUPS, ENQUIRER_LABEL, formatRange,
+  WEEKDAYS, WEEKDAYS_SHORT, ENQUIRY_STATUSES, FORMATS, LESSON_TYPE_LABEL, SLOT_KINDS, SLOT_KIND_LABEL, LEVEL_GROUPS, ENQUIRER_LABEL, SUBJECTS, formatRange, slotLabel,
 } from '../../shared/constants.js'
 import { STRINGS, shortRange } from '../i18n.jsx'
 
@@ -117,6 +117,44 @@ export function draftMessage(r) {
   ].join('\n')
 }
 
+const levelSystem = (level) => LEVEL_GROUPS.find((g) => g.levels.includes(level))?.key || 'other'
+const SYSTEM_LABEL = { uec: 'UEC', kssm: 'SPM', igcse: 'IGCSE', other: 'Other' }
+const typeOf = (r) => (r.lesson_type === 'group' ? 'group' : 'private')
+
+/** Remembered per browser (view mode etc.). Storage can be blocked, so never rely on it. */
+function useStored(key, initial) {
+  const [v, setV] = useState(() => { try { return localStorage.getItem(key) || initial } catch { return initial } })
+  const set = (next) => { setV(next); try { localStorage.setItem(key, next) } catch { /* ignore */ } }
+  return [v, set]
+}
+
+/** Download the given enquiries as a spreadsheet-friendly CSV. */
+function downloadCsv(rows) {
+  const cols = [
+    ['Received', (r) => fullDate(r.created_at)],
+    ['Status', (r) => STATUS_META[r.status].label],
+    ['Student', (r) => r.student_name],
+    ['Enquirer', (r) => ENQUIRER_LABEL[r.enquirer] || ''],
+    ['Level', (r) => r.level],
+    ['School', (r) => r.school],
+    ['Class', (r) => LESSON_TYPE_LABEL[typeOf(r)]],
+    ['Subjects', (r) => r.subjects.join(', ')],
+    ['Preferred times', (r) => r.preferred_slots.map((p) => p.label).join(', ') || 'Flexible'],
+    ['Lessons', (r) => FORMAT_LABEL[r.format] || r.format],
+    ['Location', (r) => r.location],
+    ['WhatsApp', (r) => r.phone],
+    ['Email', (r) => r.email],
+    ['Message', (r) => r.message],
+    ['My notes', (r) => r.admin_notes],
+  ]
+  const cell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`
+  const csv = [cols.map(([h]) => cell(h)), ...rows.map((r) => cols.map(([, f]) => cell(f(r))))].map((l) => l.join(',')).join('\r\n')
+  const url = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }))
+  const a = Object.assign(document.createElement('a'), { href: url, download: `kangyan-enquiries-${new Date().toISOString().slice(0, 10)}.csv` })
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
 const sortSlots = (list) =>
   [...list].sort((a, b) => a.weekday - b.weekday || a.start.localeCompare(b.start))
 
@@ -141,6 +179,13 @@ const ICONS = {
   plus: 'M12 5v14 M5 12h14',
   school: 'M3 9l9-5 9 5-9 5-9-5z M7 11.2V16c0 1.4 2.2 3 5 3s5-1.6 5-3v-4.8',
   pin: 'M12 21s-7-6.2-7-11.5A7 7 0 0112 2.5a7 7 0 017 7C19 14.8 12 21 12 21z M12 12a2.5 2.5 0 100-5 2.5 2.5 0 000 5z',
+  x: 'M18 6L6 18 M6 6l12 12',
+  note: 'M14 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V9z M14 3v6h6 M8 13h8 M8 17h5',
+  edit: 'M12 20h9 M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z',
+  download: 'M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4 M7 10l5 5 5-5 M12 15V3',
+  cards: 'M3 3h8v8H3z M13 3h8v8h-8z M3 13h8v8H3z M13 13h8v8h-8z',
+  list: 'M8 6h13 M8 12h13 M8 18h13 M3 6h.01 M3 12h.01 M3 18h.01',
+  clock: 'M12 22a10 10 0 100-20 10 10 0 000 20z M12 6v6l4 2',
 }
 
 function Icon({ name, className = '' }) {
@@ -274,8 +319,15 @@ function Login({ onDone }) {
 /* enquiries                                                           */
 /* ------------------------------------------------------------------ */
 
-function EnquiryCard({ r, onStatus, notify }) {
+function EnquiryCard({ r, onStatus, onNotes, notify }) {
   const [more, setMore] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [note, setNote] = useState(r.admin_notes || '')
+  useEffect(() => { if (!editing) setNote(r.admin_notes || '') }, [r.admin_notes, editing])
+  const saveNote = (value) => {
+    setEditing(false)
+    if (value.trim() !== (r.admin_notes || '').trim()) onNotes(r.id, value.trim())
+  }
   const long = (r.message || '').length > 140 || (r.message || '').split('\n').length > 3
   const subject = encodeURIComponent(`Tuition enquiry — ${r.subjects.join(', ')}`)
 
@@ -321,7 +373,9 @@ function EnquiryCard({ r, onStatus, notify }) {
       <div className="enq__slots">
         <span className="enq__k">Prefers</span>
         {r.preferred_slots.length
-          ? r.preferred_slots.map((s) => <span className="slot-chip" key={s.id}>{s.label}</span>)
+          ? r.preferred_slots.map((s) => (
+            <span className={`slot-chip ${s.live ? '' : 'is-gone'}`} key={s.id} title={s.live ? undefined : 'This slot has since been deleted'}>{s.label}</span>
+          ))
           : <span className="enq__flex">Flexible on time</span>}
       </div>
 
@@ -335,6 +389,29 @@ function EnquiryCard({ r, onStatus, notify }) {
           )}
         </div>
       )}
+
+      <div className="enq__notes">
+        {editing ? (
+          <textarea
+            className="enq__notearea"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            onBlur={(e) => saveNote(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Escape') { setNote(r.admin_notes || ''); setEditing(false) } }}
+            placeholder="Private note, e.g. trial lesson booked for Tue 7 PM"
+            aria-label={`Private note for ${r.student_name}`}
+            rows={3}
+            maxLength={4000}
+            autoFocus
+          />
+        ) : r.admin_notes ? (
+          <button type="button" className="enq__note" onClick={() => setEditing(true)} title="Edit note">
+            <Icon name="note" /><span>{r.admin_notes}</span>
+          </button>
+        ) : (
+          <button type="button" className="enq__addnote" onClick={() => setEditing(true)}><Icon name="note" />Add a private note</button>
+        )}
+      </div>
 
       <p className="enq__contact">
         {[r.phone, r.email].filter(Boolean).join(' · ')}
@@ -352,10 +429,126 @@ function EnquiryCard({ r, onStatus, notify }) {
   )
 }
 
-function EnquiriesTab({ rows, setRows, onAuthError, notify }) {
+function StatusDot({ status }) {
+  return <span className="st" style={{ '--c': STATUS_META[status].color }}><span className="dot" />{STATUS_META[status].label}</span>
+}
+
+/** One person in a compact list: opens their full enquiry. */
+function Person({ r, onOpen }) {
+  const t = typeOf(r)
+  return (
+    <button type="button" className={`person ${r.status === 'closed' ? 'is-closed' : ''}`} onClick={() => onOpen(r.id)} title={`Open ${r.student_name}`}>
+      <span className="dot" style={{ '--c': STATUS_META[r.status].color }} aria-label={STATUS_META[r.status].label} />
+      <b>{r.student_name}</b>
+      <span className="person__lvl">{r.level}</span>
+      <span className={`want want--${t}`}>{KIND_SHORT[t]}</span>
+    </button>
+  )
+}
+
+function EnquiryTable({ rows, onOpen }) {
+  return (
+    <div className="etable-wrap">
+      <table className="etable">
+        <thead>
+          <tr><th>Student</th><th>Level</th><th>Class</th><th>Subjects</th><th>Preferred times</th><th>Lessons</th><th>Received</th><th>Status</th></tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.id} className={r.status === 'closed' ? 'is-closed' : ''} onClick={() => onOpen(r.id)}>
+              <td>
+                <button type="button" className="etable__name" onClick={(e) => { e.stopPropagation(); onOpen(r.id) }}>{r.student_name}</button>
+                <small>{[ENQUIRER_LABEL[r.enquirer], r.school].filter(Boolean).join(' · ')}</small>
+              </td>
+              <td>{r.level}</td>
+              <td><span className={`want want--${typeOf(r)}`}>{KIND_SHORT[typeOf(r)]}</span></td>
+              <td>{r.subjects.join(', ')}</td>
+              <td>{r.preferred_slots.length ? r.preferred_slots.map((p) => p.label).join(', ') : <i>Flexible</i>}</td>
+              <td>{FORMAT_LABEL[r.format] || r.format}{r.location ? <small>{r.location}</small> : null}</td>
+              <td><time dateTime={r.created_at} title={fullDate(r.created_at)}>{timeAgo(r.created_at)}</time></td>
+              <td><StatusDot status={r.status} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+/** Enquiries grouped by the timetable slot they picked: who wants which time. */
+function ByTime({ rows, slots, onOpen }) {
+  const bySlot = new Map()
+  const gone = new Map()
+  const flexible = []
+  for (const r of rows) {
+    if (!r.preferred_slots.length) flexible.push(r)
+    for (const p of r.preferred_slots) {
+      const m = p.live ? bySlot : gone
+      const k = p.live ? p.id : p.label
+      if (!m.has(k)) m.set(k, [])
+      m.get(k).push(r)
+    }
+  }
+  const days = WEEKDAYS.map((name, d) => ({ name, list: slots.filter((s) => s.weekday === d && bySlot.has(s.id)) })).filter((x) => x.list.length)
+
+  if (!days.length && !gone.size && !flexible.length) return null
+  return (
+    <div className="bytime">
+      {days.map(({ name, list }) => (
+        <section className="bt-day" key={name}>
+          <h3>{name}</h3>
+          {list.map((s) => {
+            const people = bySlot.get(s.id)
+            const n = (t) => people.filter((r) => typeOf(r) === t).length
+            return (
+              <div className={`bt-slot ${s.status === 'open' ? '' : 'is-taken'}`} key={s.id}>
+                <header>
+                  <span className="bt-slot__time">{formatRange(s.start, s.end)}</span>
+                  <span className={`bt-kind bt-kind--${s.kind}`}>{SLOT_KIND_LABEL[s.kind]}</span>
+                  {s.status !== 'open' && <span className="bt-taken">Taken</span>}
+                  <span className="bt-slot__n">
+                    {n('private') > 0 && `${n('private')} 1-to-1`}{n('private') > 0 && n('group') > 0 && ' · '}{n('group') > 0 && `${n('group')} group`}
+                  </span>
+                </header>
+                <div className="bt-people">{people.map((r) => <Person key={r.id} r={r} onOpen={onOpen} />)}</div>
+              </div>
+            )
+          })}
+        </section>
+      ))}
+      {gone.size > 0 && (
+        <section className="bt-day">
+          <h3>Deleted slots</h3>
+          {[...gone].map(([label, people]) => (
+            <div className="bt-slot is-taken" key={label}>
+              <header><span className="bt-slot__time">{label}</span></header>
+              <div className="bt-people">{people.map((r) => <Person key={r.id} r={r} onOpen={onOpen} />)}</div>
+            </div>
+          ))}
+        </section>
+      )}
+      {flexible.length > 0 && (
+        <section className="bt-day">
+          <h3>Flexible on time</h3>
+          <div className="bt-slot">
+            <div className="bt-people">{flexible.map((r) => <Person key={r.id} r={r} onOpen={onOpen} />)}</div>
+          </div>
+        </section>
+      )}
+    </div>
+  )
+}
+
+const VIEWS = [['cards', 'Cards', 'cards'], ['table', 'Table', 'list'], ['time', 'By time', 'clock']]
+
+function EnquiriesTab({ rows, slots, actions, onOpen, notify }) {
   const [filter, setFilter] = useState('all')
   const [q, setQ] = useState('')
   const [sort, setSort] = useState('newest')
+  const [kind, setKind] = useState('all')
+  const [system, setSystem] = useState('all')
+  const [subject, setSubject] = useState('all')
+  const [view, setView] = useStored('kangyan-admin-view', 'cards')
 
   const counts = useMemo(
     () => Object.fromEntries(ENQUIRY_STATUSES.map((s) => [s, rows.filter((r) => r.status === s).length])),
@@ -366,8 +559,11 @@ function EnquiriesTab({ rows, setRows, onAuthError, notify }) {
     const needle = q.trim().toLowerCase()
     const list = rows.filter((r) => {
       if (filter !== 'all' && r.status !== filter) return false
+      if (kind !== 'all' && typeOf(r) !== kind) return false
+      if (system !== 'all' && levelSystem(r.level) !== system) return false
+      if (subject !== 'all' && !r.subjects.includes(subject)) return false
       if (!needle) return true
-      return [r.student_name, r.email, r.phone, r.level, r.school, r.message, r.location, LESSON_TYPE_LABEL[r.lesson_type], ENQUIRER_LABEL[r.enquirer], ...r.subjects]
+      return [r.student_name, r.email, r.phone, r.level, r.school, r.message, r.location, r.admin_notes, LESSON_TYPE_LABEL[r.lesson_type], ENQUIRER_LABEL[r.enquirer], ...r.subjects, ...r.preferred_slots.map((p) => p.label)]
         .filter(Boolean)
         .some((v) => v.toLowerCase().includes(needle))
     })
@@ -379,20 +575,10 @@ function EnquiriesTab({ rows, setRows, onAuthError, notify }) {
       if (an !== bn) return an - bn
       return sort === 'newest' ? t(b) - t(a) : t(a) - t(b)
     })
-  }, [rows, filter, q, sort])
+  }, [rows, filter, q, sort, kind, system, subject])
 
-  const setStatus = async (id, status) => {
-    const old = rows.find((r) => r.id === id)?.status
-    setRows((rs) => rs.map((r) => (r.id === id ? { ...r, status } : r)))
-    try {
-      await api('/api/admin/enquiries', { method: 'PATCH', body: { id, status } })
-      notify(`Marked as ${STATUS_META[status].label.toLowerCase()}`)
-    } catch (e) {
-      // Roll back only this enquiry; other changes made meanwhile stay.
-      setRows((rs) => rs.map((r) => (r.id === id ? { ...r, status: old } : r)))
-      e.unauthorized ? onAuthError() : notify(e.message, 'error')
-    }
-  }
+  const filtered = kind !== 'all' || system !== 'all' || subject !== 'all'
+  const clear = () => { setKind('all'); setSystem('all'); setSubject('all'); setQ(''); setFilter('all') }
 
   const tiles = [['all', 'All', rows.length, 'var(--purple)'], ...ENQUIRY_STATUSES.map((s) => [s, STATUS_META[s].label, counts[s], STATUS_META[s].color])]
 
@@ -417,13 +603,45 @@ function EnquiriesTab({ rows, setRows, onAuthError, notify }) {
       <div className="adm-tools">
         <label className="adm-search">
           <Icon name="search" />
-          <input type="search" placeholder="Search enquiries" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search enquiries" />
+          <input type="search" placeholder="Search name, school, time, notes…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search enquiries" />
         </label>
         <button type="button" className="adm-sort" onClick={() => setSort((s) => (s === 'newest' ? 'oldest' : 'newest'))} aria-label={`Sort: ${sort} first`}>
           <Icon name="sort" />
           <span>{sort === 'newest' ? 'Newest' : 'Oldest'}</span>
         </button>
       </div>
+
+      <div className="adm-filters">
+        <select className="adm-select" value={kind} onChange={(e) => setKind(e.target.value)} aria-label="Class type">
+          <option value="all">All classes</option>
+          <option value="private">1-to-1</option>
+          <option value="group">Group</option>
+        </select>
+        <select className="adm-select" value={system} onChange={(e) => setSystem(e.target.value)} aria-label="School system">
+          <option value="all">All levels</option>
+          {Object.entries(SYSTEM_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+        </select>
+        <select className="adm-select" value={subject} onChange={(e) => setSubject(e.target.value)} aria-label="Subject">
+          <option value="all">All subjects</option>
+          {SUBJECTS.map((x) => <option key={x} value={x}>{x}</option>)}
+        </select>
+        {(filtered || q || filter !== 'all') && <button type="button" className="adm-clear" onClick={clear}>Clear</button>}
+
+        <div className="adm-filters__end">
+          <div className="viewpick" role="group" aria-label="View">
+            {VIEWS.map(([k, label, icon]) => (
+              <button key={k} type="button" className={view === k ? 'is-on' : ''} aria-pressed={view === k} onClick={() => setView(k)} title={label}>
+                <Icon name={icon} /><span>{label}</span>
+              </button>
+            ))}
+          </div>
+          <button type="button" className="icon-btn" onClick={() => { downloadCsv(shown); notify(`Exported ${shown.length} enquir${shown.length === 1 ? 'y' : 'ies'}`) }} title="Export these enquiries as CSV" aria-label="Export CSV" disabled={!shown.length}>
+            <Icon name="download" />
+          </button>
+        </div>
+      </div>
+
+      {shown.length > 0 && shown.length !== rows.length && <p className="adm-showing">Showing {shown.length} of {rows.length}</p>}
 
       {shown.length === 0 ? (
         <div className="adm-empty">
@@ -432,12 +650,36 @@ function EnquiriesTab({ rows, setRows, onAuthError, notify }) {
             ? 'New enquiries from the website will appear here.'
             : 'Try another filter or search term.'}
         </div>
+      ) : view === 'table' ? (
+        <EnquiryTable rows={shown} onOpen={onOpen} />
+      ) : view === 'time' ? (
+        <ByTime rows={shown} slots={slots} onOpen={onOpen} />
       ) : (
         <div className="enq-list">
-          {shown.map((r) => <EnquiryCard key={r.id} r={r} onStatus={setStatus} notify={notify} />)}
+          {shown.map((r) => <EnquiryCard key={r.id} r={r} onStatus={actions.status} onNotes={actions.notes} notify={notify} />)}
         </div>
       )}
     </>
+  )
+}
+
+/** Full enquiry in a side panel, opened from the table, by-time view or timetable. */
+function Drawer({ onClose, children, label }) {
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape' && !document.querySelector('.smenu.is-open')) onClose() }
+    document.addEventListener('keydown', onKey)
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = prev }
+  }, [onClose])
+  return (
+    <div className="drawer" role="dialog" aria-modal="true" aria-label={label}>
+      <div className="drawer__backdrop" onClick={onClose} />
+      <div className="drawer__panel">
+        <button type="button" className="icon-btn drawer__close" onClick={onClose} aria-label="Close" autoFocus><Icon name="x" /></button>
+        {children}
+      </div>
+    </div>
   )
 }
 
@@ -447,20 +689,39 @@ function EnquiriesTab({ rows, setRows, onAuthError, notify }) {
 
 const KIND_SHORT = { private: '1-to-1', group: 'Group', both: 'Both' }
 
-function SlotsTab({ slots, setSlots, enquiries, onAuthError, notify }) {
-  // How many enquiries picked each slot, split by the class type they asked for.
+function SlotsTab({ slots, setSlots, enquiries, onAuthError, notify, onOpen }) {
+  // Open enquiries (not closed) that picked each slot.
   const interest = useMemo(() => {
     const m = {}
     for (const r of enquiries) {
       if (r.status === 'closed') continue
-      const t = r.lesson_type === 'group' ? 'group' : 'private'
-      for (const p of r.preferred_slots || []) {
-        const c = (m[p.id] ||= { private: 0, group: 0 })
-        c[t]++
-      }
+      for (const p of r.preferred_slots || []) (m[p.id] ||= []).push(r)
     }
     return m
   }, [enquiries])
+  const wantCount = (id, t) => (interest[id] || []).filter((r) => typeOf(r) === t).length
+
+  // Editing one slot's day and time in place.
+  const [edit, setEdit] = useState(null) // { id, weekday, start, end }
+  const [saving, setSaving] = useState(false)
+  const saveEdit = async (e) => {
+    e.preventDefault()
+    const slot = slots.find((x) => x.id === edit.id)
+    if (!edit.start || !edit.end || edit.start >= edit.end) return notify('End time must be after start time', 'error')
+    if (slot.weekday === edit.weekday && slot.start === edit.start && slot.end === edit.end) return setEdit(null)
+    setSaving(true)
+    try {
+      const { slot: next } = await api('/api/admin/slots', { method: 'PATCH', body: { id: edit.id, weekday: edit.weekday, start: edit.start, end: edit.end } })
+      setSlots((list) => sortSlots(list.map((x) => (x.id === next.id ? next : x))))
+      setEdit(null)
+      const n = (interest[next.id] || []).length
+      notify(`Moved to ${slotLabel(next)}${n ? ` · ${n} enquir${n === 1 ? 'y' : 'ies'} now show the new time` : ''}`)
+    } catch (err) {
+      fail(err)
+    } finally {
+      setSaving(false)
+    }
+  }
   const groupWant = enquiries.filter((r) => r.lesson_type === 'group' && r.status !== 'closed').length
 
   const [days, setDays] = useState(() => new Set([0]))
@@ -600,7 +861,7 @@ function SlotsTab({ slots, setSlots, enquiries, onAuthError, notify }) {
         <span><b>{kindCount('group')}</b> group</span>
         <span><b>{kindCount('both')}</b> both</span>
         <span><b>{groupWant}</b> want group</span>
-        <span className="adm-summary__hint">Set each slot to 1-to-1, Group or Both, and switch it off when it's taken. A slot set to Both shows for students who pick either class, so you can see how many want a group class. Each slot shows how many open enquiries picked it.</span>
+        <span className="adm-summary__hint">Tap a time to change its day or hours. Set each slot to 1-to-1, Group or Both, and switch it off when it's taken. Under each slot you can see who picked it; tap a name to open their enquiry.</span>
       </div>
 
       <div className="adm-week">
@@ -622,18 +883,42 @@ function SlotsTab({ slots, setSlots, enquiries, onAuthError, notify }) {
                     const range = formatRange(s.start, s.end)
                     return (
                       <li className={`adm-slot ${isOpen ? '' : 'is-taken'}`} key={s.id}>
-                        <div className="adm-slot__top">
-                          <span className="adm-slot__time">{range}</span>
-                          {interest[s.id] && (
-                            <span className="adm-slot__want" title="Open enquiries that picked this slot">
-                              {interest[s.id].private > 0 && <span className="want want--private">{interest[s.id].private} 1-to-1</span>}
-                              {interest[s.id].group > 0 && <span className="want want--group">{interest[s.id].group} group</span>}
-                            </span>
-                          )}
-                          <button type="button" className="icon-btn icon-btn--danger" aria-label={`Delete ${name} ${range}`} onClick={() => remove(s)}>
-                            <Icon name="trash" />
-                          </button>
-                        </div>
+                        {edit?.id === s.id ? (
+                          <form className="slot-edit" onSubmit={saveEdit}>
+                            <select value={edit.weekday} onChange={(e) => setEdit({ ...edit, weekday: Number(e.target.value) })} aria-label="Day">
+                              {WEEKDAYS.map((w, i) => <option key={w} value={i}>{w}</option>)}
+                            </select>
+                            <div className="slot-edit__times">
+                              <input type="time" step="900" value={edit.start} onChange={(e) => setEdit({ ...edit, start: e.target.value })} aria-label="Start time" required autoFocus />
+                              <span>to</span>
+                              <input type="time" step="900" value={edit.end} onChange={(e) => setEdit({ ...edit, end: e.target.value })} aria-label="End time" required />
+                            </div>
+                            <div className="slot-edit__acts">
+                              <button className="btn btn--accent slot-edit__save" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+                              <button type="button" className="act" onClick={() => setEdit(null)}>Cancel</button>
+                            </div>
+                          </form>
+                        ) : (
+                          <div className="adm-slot__top">
+                            <button type="button" className="adm-slot__time" onClick={() => setEdit({ id: s.id, weekday: s.weekday, start: s.start, end: s.end })} title="Change day or time">
+                              {range}<Icon name="edit" />
+                            </button>
+                            {interest[s.id] && (
+                              <span className="adm-slot__want" title="Open enquiries that picked this slot">
+                                {wantCount(s.id, 'private') > 0 && <span className="want want--private">{wantCount(s.id, 'private')} 1-to-1</span>}
+                                {wantCount(s.id, 'group') > 0 && <span className="want want--group">{wantCount(s.id, 'group')} group</span>}
+                              </span>
+                            )}
+                            <button type="button" className="icon-btn icon-btn--danger" aria-label={`Delete ${name} ${range}`} onClick={() => remove(s)}>
+                              <Icon name="trash" />
+                            </button>
+                          </div>
+                        )}
+                        {interest[s.id] && (
+                          <div className="adm-slot__people">
+                            {interest[s.id].map((r) => <Person key={r.id} r={r} onOpen={onOpen} />)}
+                          </div>
+                        )}
                         <div className="adm-slot__ctrls">
                           <div className="kindpick kindpick--sm" role="group" aria-label={`${name} ${range} class type`}>
                             {SLOT_KINDS.map((k) => (
@@ -672,6 +957,7 @@ export default function AdminPage() {
   const [loadErr, setLoadErr] = useState('')
   const [spinning, setSpinning] = useState(false)
   const [toast, setToast] = useState(null)
+  const [openId, setOpenId] = useState(null)
   const timer = useRef(null)
 
   // Keep the dashboard out of search results.
@@ -724,7 +1010,46 @@ export default function AdminPage() {
     if (ok) notify('Up to date')
   }
 
+  // Show each picked slot with its current day and time (slots can be edited after
+  // the enquiry came in). A slot that no longer exists keeps the label saved with the enquiry.
+  const rows = useMemo(() => {
+    if (!enquiries || !slots) return null
+    const byId = new Map(slots.map((x) => [x.id, x]))
+    return enquiries.map((r) => ({
+      ...r,
+      preferred_slots: (r.preferred_slots || []).map((p) => {
+        const cur = byId.get(p.id)
+        return cur ? { ...p, weekday: cur.weekday, start: cur.start, end: cur.end, label: slotLabel(cur), live: true } : { ...p, live: false }
+      }).sort((a, b) => (a.weekday ?? 9) - (b.weekday ?? 9) || (a.start || '').localeCompare(b.start || '')),
+    }))
+  }, [enquiries, slots])
+
+  // Optimistic update of one enquiry; on failure only the changed fields roll back.
+  const patchEnquiry = useCallback(async (id, change, body, okText) => {
+    let old
+    setEnquiries((rs) => rs.map((r) => {
+      if (r.id !== id) return r
+      old = Object.fromEntries(Object.keys(change).map((k) => [k, r[k]]))
+      return { ...r, ...change }
+    }))
+    try {
+      await api('/api/admin/enquiries', { method: 'PATCH', body: { id, ...body } })
+      notify(okText)
+    } catch (e) {
+      setEnquiries((rs) => rs.map((r) => (r.id === id ? { ...r, ...old } : r)))
+      e.unauthorized ? logout() : notify(e.message, 'error')
+    }
+  }, [notify, logout])
+  const actions = useMemo(() => ({
+    status: (id, status) => patchEnquiry(id, { status }, { status }, `Marked as ${STATUS_META[status].label.toLowerCase()}`),
+    notes: (id, notes) => patchEnquiry(id, { admin_notes: notes }, { notes }, notes ? 'Note saved' : 'Note removed'),
+  }), [patchEnquiry])
+  const closeDrawer = useCallback(() => setOpenId(null), [])
+  const opened = rows && openId != null ? rows.find((r) => r.id === openId) : null
+
   const newCount = enquiries ? enquiries.filter((r) => r.status === 'new').length : 0
+  const weekAgo = Date.now() - 7 * 864e5
+  const weekCount = enquiries ? enquiries.filter((r) => new Date(r.created_at).getTime() > weekAgo).length : 0
   const openSlots = slots ? slots.filter((s) => s.status === 'open').length : 0
   const ready = enquiries && slots
 
@@ -780,18 +1105,24 @@ export default function AdminPage() {
               <h1>{tab === 'enquiries' ? 'Enquiries' : 'Timetable'}</h1>
               <p>
                 {tab === 'enquiries'
-                  ? `${newCount} new · ${enquiries.length} total`
+                  ? `${newCount} new · ${weekCount} in the last 7 days · ${enquiries.length} total`
                   : `${openSlots} open slot${openSlots === 1 ? '' : 's'} across the week`}
               </p>
             </div>
             {tab === 'enquiries' ? (
-              <EnquiriesTab rows={enquiries} setRows={setEnquiries} onAuthError={logout} notify={notify} />
+              <EnquiriesTab rows={rows} slots={slots} actions={actions} onOpen={setOpenId} notify={notify} />
             ) : (
-              <SlotsTab slots={slots} setSlots={setSlots} enquiries={enquiries} onAuthError={logout} notify={notify} />
+              <SlotsTab slots={slots} setSlots={setSlots} enquiries={rows} onAuthError={logout} notify={notify} onOpen={setOpenId} />
             )}
           </>
         )}
       </main>
+
+      {opened && (
+        <Drawer onClose={closeDrawer} label={`Enquiry from ${opened.student_name}`}>
+          <EnquiryCard r={opened} onStatus={actions.status} onNotes={actions.notes} notify={notify} />
+        </Drawer>
+      )}
 
       {toast && (
         <div key={toast.id} className={`toast ${toast.kind === 'error' ? 'is-error' : ''}`} role="status">
