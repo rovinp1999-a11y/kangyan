@@ -143,8 +143,8 @@ const en = {
         'Private 1-to-1 lessons start from RM70 an hour. The final rate depends on whether lessons are online or in person and, for in-person lessons, the location.',
       ] },
       { q: 'Do fees change over time?', a: [
-        "Group class fees follow the student's level, so they move to the senior rate when the student moves up, for example from Form 3 to Form 4.",
-        'Private 1-to-1 rates go up by RM10 an hour each year.',
+        'Group class fees stay the same throughout each stage. All of junior (Form 1–3, Junior 1–3, Year 7–9) is RM280 a month, and all of senior (Form 4–6, Senior 1–3, Year 10–11) is RM320 a month. The fee changes only once, when the student moves up from junior to senior, for example from Form 3 to Form 4.',
+        'Private 1-to-1 rates go up by RM5 an hour each year.',
       ] },
       { q: 'When are fees paid?', a: [
         "Fees are paid at the start of each month. If payment is more than 2 weeks late, the student can't join lessons until it is settled.",
@@ -156,8 +156,8 @@ const en = {
         "Weekday in-person 1-to-1 slots are very limited. Please still send an enquiry: if I don't have a slot that suits you, I can refer you to another tutor.",
       ] },
       { q: "What if the student can't make a lesson?", a: [
-        'Please let me know at least 24 hours before the lesson, especially for 1-to-1.',
-        "For 1-to-1, a lesson cancelled 24 hours or more ahead can be replaced at a time we agree on. With less than 24 hours' notice, the lesson is forfeited and not replaced.",
+        'Please let me know at least 12 hours before the lesson, ideally the day before, especially for 1-to-1.',
+        "For 1-to-1, a lesson cancelled at least 12 hours ahead can be replaced at a time we agree on. With less than 12 hours' notice, the lesson is forfeited and not replaced.",
       ] },
       { q: 'Are missed group classes replaced?', a: [
         'Group classes run on a fixed schedule, so missed classes are not replaced. A recording of the class is available on request, so the student can catch up.',
@@ -322,8 +322,8 @@ const zh = {
         '一对一私人课 RM70 / 小时起，实际收费视网课或面对面而定，面对面课也看上课地点。',
       ] },
       { q: '学费会调整吗？', a: [
-        '小组课学费按年级计算，升上高中（例如中三升中四）就会按高中的学费收。',
-        '一对一私人课每年每小时调涨 RM10。',
+        '小组课学费按初中、高中两个阶段计算，同一个阶段里不会涨价：整个初中（初一至初三、中一至中三、七至九年级）都是每月 RM280，整个高中（高一至高三、中四至中六、十至十一年级）都是每月 RM320。只有从初中升上高中时（例如中三升中四）才会调整一次。',
+        '一对一私人课每年每小时调涨 RM5。',
       ] },
       { q: '学费什么时候缴？', a: [
         '学费在每个月初缴付。如果迟交超过两个星期，缴清之前将无法继续上课。',
@@ -335,8 +335,8 @@ const zh = {
         '平日的一对一面对面时段非常有限。还是欢迎先送出咨询，如果我没有适合的时段，可以介绍其他老师给你。',
       ] },
       { q: '学生没办法来上课怎么办？', a: [
-        '请至少在上课前 24 小时通知我，一对一课尤其重要。',
-        '一对一课如果提前 24 小时或以上通知，可以跟我商量另外补课的时间；不到 24 小时才通知，该堂课将不会补回。',
+        '请至少在上课前 12 小时通知我，最好提前一天，一对一课尤其重要。',
+        '一对一课如果提前 12 小时或以上通知，可以跟我商量另外补课的时间；不到 12 小时才通知，该堂课将不会补回。',
       ] },
       { q: '小组课缺席可以补课吗？', a: [
         '小组课按固定时间进行，缺席不另外补课。如有需要，可以向我索取该堂课的录影，自己补上进度。',
