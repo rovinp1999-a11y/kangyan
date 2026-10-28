@@ -11,6 +11,13 @@ export const LEVEL_GROUPS = [
 ]
 export const LEVELS = LEVEL_GROUPS.flatMap((g) => g.levels)
 
+// Monthly group class fee (4 lessons) by stage: junior = Form 1–3 / Junior 1–3 / Year 7–9,
+// senior = Form 4–6 / Senior 1–3 / Year 10–11. 'Other' has no fixed stage.
+export const GROUP_FEE = { junior: 280, senior: 320 }
+export const PRIVATE_FEE_FROM = 70
+const SENIOR_LEVELS = ['UEC Senior 1', 'UEC Senior 2', 'UEC Senior 3', 'Form 4', 'Form 5', 'IGCSE Year 10', 'IGCSE Year 11']
+export const feeStage = (level) => (!level || level === 'Other' ? null : SENIOR_LEVELS.includes(level) ? 'senior' : 'junior')
+
 export const FORMATS = [
   { value: 'online', label: 'Online' },
   { value: 'in-person', label: 'In-person' },

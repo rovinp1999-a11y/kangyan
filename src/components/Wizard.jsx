@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { SUBJECTS, LEVEL_GROUPS, LEVELS, LESSON_TYPES, ENQUIRERS, slotFits } from '../../shared/constants.js'
+import { SUBJECTS, LEVEL_GROUPS, LEVELS, LESSON_TYPES, ENQUIRERS, slotFits, GROUP_FEE, feeStage } from '../../shared/constants.js'
 import { useLang, shortRange } from '../i18n.jsx'
 import { confettiBurst } from '../confetti.js'
 import { subjectTiles } from '../data.js'
 import SchoolPicker from './SchoolPicker.jsx'
 
 // One-question-at-a-time enquiry flow:
-// parent or student → name → private/group → level → school → subjects → times (filtered by class type)
+// parent or student → name → level → private/group (priced for that level) → school → subjects → times (filtered by class type)
 // → online/in person → contact + note → done.
-const STEPS = ['who', 'name', 'type', 'level', 'school', 'subjects', 'times', 'format', 'contact']
+const STEPS = ['who', 'name', 'level', 'type', 'school', 'subjects', 'times', 'format', 'contact']
 const at = (id) => STEPS.indexOf(id)
 const DRAFT_KEY = 'kangyan-enquiry-draft'
 const EMAIL_RE = /^[^\s@?&=]+@[^\s@?&=]+\.[^\s@?&=]+$/ // same rule as the server
@@ -312,7 +312,7 @@ export default function Wizard() {
                   <span className="wz__cardtxt">
                     <strong>{w.type[k].title}</strong>
                     <span>{off ? w.type.unavailable : w.type[k].desc}</span>
-                    {!off && <span className="wz__price">{w.type[k].price}</span>}
+                    {!off && <span className="wz__price">{k === 'group' ? w.type.group.price(GROUP_FEE[feeStage(data.level)]) : w.type.private.price}</span>}
                   </span>
                   {off && <span className="wz__badge">{w.type.fullBadge}</span>}
                 </button>
@@ -431,6 +431,7 @@ export default function Wizard() {
       body = (
         <>
           <h2 tabIndex={-1}>{w.format.q}</h2>
+          {data.lessonType === 'private' && <p className="wz__help">{w.format.privateHelp}</p>}
           <div className="wz__cards wz__cards--3">
             {['online', 'in-person', 'either'].map((k) => (
               <button type="button" key={k} className={`wz__card ${data.format === k ? 'is-on' : ''}`} aria-pressed={data.format === k} onClick={() => chooseFormat(k)}>
@@ -464,8 +465,8 @@ export default function Wizard() {
     default: {
       const summary = [
         { label: L.enquirers[data.enquirer] || '', to: at('who') },
-        { label: typeLabel, to: at('type') },
         { label: L.levels[data.level] || data.level, to: at('level') },
+        { label: typeLabel, to: at('type') },
         { label: data.school.trim(), to: at('school') },
         { label: data.subjects.map((s) => L.subjects[s]).join(' · '), to: at('subjects') },
         { label: pickedSlots.length ? w.times.picked(pickedSlots.length) : w.contact.flexible, to: at('times') },

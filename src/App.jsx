@@ -8,6 +8,7 @@ import AdminPage from './admin/AdminPage.jsx'
 import { useState } from 'react'
 import { LangProvider, useLang, onZhPath } from './i18n.jsx'
 import SeoStrip from './components/SeoStrip.jsx'
+import Faq from './components/Faq.jsx'
 
 // Ask for a language once per visit (tab session). A refresh mid-enquiry doesn't ask
 // again, and links that already say ?lang=en / ?lang=zh skip the question.
@@ -49,6 +50,7 @@ function EnquiryPage() {
           </div>
         </main>
         <SeoStrip headingLevel={1} />
+        <Faq />
         <Footer />
       </>
     )
@@ -70,6 +72,7 @@ function EnquiryPage() {
         </div>
       </main>
       <SeoStrip headingLevel={2} />
+      <Faq />
       <Footer />
     </>
   )

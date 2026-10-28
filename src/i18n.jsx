@@ -9,12 +9,12 @@ const KEY = 'kangyan-lang'
 const en = {
   htmlLang: 'en',
   meta: {
-    title: 'Private Science & Maths Tutor | UEC, SPM & IGCSE | Kangyan',
-    description: 'Private 1-to-1 and group tuition in Physics, Chemistry, Biology, Science and Maths for UEC (独中统考), SPM and IGCSE. Online across Malaysia. Enquire in a minute.',
+    title: 'Science & Maths Tuition for UEC, SPM & IGCSE | Small Groups & 1-to-1 | Kangyan',
+    description: 'Live online group classes (2–5 students) and private 1-to-1 tuition in Physics, Chemistry, Biology, Science and Maths for UEC (独中统考), SPM and IGCSE. Group classes from RM280 a month. Enquire in a minute.',
   },
   seo: {
-    title: 'Private Science & Maths tutor for UEC, SPM and IGCSE',
-    intro: 'Private 1-to-1 and small-group tuition in Physics, Chemistry, Biology, Science and Mathematics. Online lessons across Malaysia, in-person lessons by arrangement, on weekday evenings.',
+    title: 'Science & Maths tuition for UEC, SPM and IGCSE',
+    intro: 'Live, interactive group classes of 2–5 students and private 1-to-1 lessons in Physics, Chemistry, Biology, Science and Mathematics. Every lesson comes with notes and exercises. Online across Malaysia on weekday evenings, with in-person lessons by arrangement.',
     groups: [
       { name: 'UEC (独中统考)', levels: 'Junior 1–3 · Senior 1–3', subjects: 'Physics, Chemistry, Biology, Science, Mathematics' },
       { name: 'SPM / KSSM', levels: 'Form 1–5', subjects: 'Physics, Chemistry, Biology, Science, Mathematics' },
@@ -23,17 +23,17 @@ const en = {
     pricing: {
       title: 'Fees',
       items: [
-        { name: 'Group class, junior (Form 1–3)', price: 'RM280 / month', note: '4 lessons a month' },
-        { name: 'Group class, senior (Form 4–6)', price: 'RM320 / month', note: '4 lessons a month' },
-        { name: 'Private 1-to-1', price: 'From RM70 / hour', note: 'Depends on online or in person, and for in-person lessons, the location' },
+        { name: 'Junior group class', price: 'RM280 / month', note: 'Form 1–3 · Junior 1–3 · Year 7–9. 4 lessons a month.' },
+        { name: 'Senior group class', price: 'RM320 / month', note: 'Form 4–6 · Senior 1–3 · Year 10–11. 4 lessons a month.' },
+        { name: 'Private 1-to-1', price: 'From RM70 / hour', note: 'The rate depends on online or in person and, for in-person lessons, the location.' },
       ],
     },
   },
   nav: { switchLabel: 'Language / 语言' },
   intro: {
     eyebrow: 'UEC · SPM · IGCSE · Science & Maths tuition',
-    title: ['Book a tuition slot in ', 'under a minute', '.'],
-    sub: "Answer a few quick questions. I'll reply within 48 hours. Free, no commitment.",
+    title: ['Science & Maths, taught so it ', 'finally clicks', '.'],
+    sub: "Small group classes and private 1-to-1 lessons for UEC, SPM and IGCSE. Answer a few quick questions and I'll reply within 48 hours. Free, no commitment.",
   },
   wz: {
     stepOf: (i, n) => `Step ${i} of ${n}`,
@@ -64,21 +64,21 @@ const en = {
     },
     name: {
       q: { parent: "What's your child's name?", student: "What's your name?" },
-      help: "Let's find the right class. This takes about a minute.",
+      help: 'A few quick questions and I can recommend the right class. About a minute.',
       ph: { parent: "Your child's full name", student: 'Your full name' },
     },
     type: {
-      q: (n, who) => (who === 'parent' ? `Private 1-to-1 or a group class for ${n}?` : `Hi ${n}! Private 1-to-1 or a group class?`),
-      help: 'You can change this later.',
-      private: { title: 'Private 1-to-1', desc: "Lessons built around one student's pace and gaps.", price: 'From RM70 / hour' },
-      group: { title: 'Group class', desc: 'Learn alongside a few students at the same level.', price: 'RM280–320 / month · 4 lessons' },
+      q: (n, who) => (who === 'parent' ? `Private 1-to-1 or a group class for ${n}?` : 'Private 1-to-1 or a group class?'),
+      help: 'Fees shown are for this level. You can change your mind later.',
+      private: { title: 'Private 1-to-1', desc: "Fully tailored to one student's pace, gaps and goals.", price: 'From RM70 / hour' },
+      group: { title: 'Group class', desc: '2–5 students at the same level. Live, interactive, notes included.', price: (fee) => (fee ? `RM${fee} / month · 4 lessons` : 'RM280–320 / month · 4 lessons') },
       unavailable: 'No open slots right now',
       fullBadge: 'Full',
       noGroup: "Group classes are full right now. Please choose Private 1-to-1, and I'll let you know when a group class opens.",
       noPrivate: 'Private slots are full right now. Please choose a group class.',
       allFull: "All slots are full at the moment. You can still enquire and I'll let you know when one opens.",
     },
-    level: { q: (n, who) => (who === 'parent' ? `Which level is ${n} in?` : 'Which level are you in?'), help: 'Chinese independent school (UEC), national school (SPM) or IGCSE.' },
+    level: { q: (n, who) => (who === 'parent' ? `Which level is ${n} in?` : `Hi ${n}! Which level are you in?`), help: 'Chinese independent school (UEC), national school (SPM) or IGCSE. This sets the fee.' },
     school: {
       q: (n, who) => (who === 'parent' ? `Which school does ${n} go to?` : 'Which school do you go to?'),
       help: "Start typing and pick from the list. If it isn't there, just type the full name.",
@@ -102,10 +102,11 @@ const en = {
     },
     format: {
       q: 'Online or in person?',
+      privateHelp: "Weekday in-person 1-to-1 slots are very limited. Enquire anyway: if I can't fit you in, I can refer you to another tutor.",
       opts: { online: ['Online', 'Learn from home'], 'in-person': ['In person', 'At your place or nearby'], either: ['Either works', 'Whatever fits best'] },
       location: 'Where would lessons be?',
       locationPh: 'Area or address, e.g. Cheras, Kuala Lumpur',
-      locationHint: "I'll let you know whether I can travel there.",
+      locationHint: "Lessons are near where the student lives. I'll confirm whether I can travel there.",
     },
     contact: {
       q: 'Where should I reply?',
@@ -129,6 +130,43 @@ const en = {
       again: 'Start a new enquiry',
     },
   },
+  faq: {
+    title: 'Frequently asked questions',
+    intro: "Everything parents and students usually ask before starting. Still unsure? Send an enquiry and ask me directly.",
+    items: [
+      { q: 'How do group classes work?', a: [
+        'Each group has 2 to 5 students at the same level, so everyone gets attention. Classes are live and interactive: students keep their webcam on, ask questions at any point and work through problems together.',
+        'Notes and exercises are provided for every lesson. All you need is a laptop, tablet or phone that can join an online meeting.',
+      ] },
+      { q: 'How much are the fees?', a: [
+        'Group classes are RM280 a month for junior levels (Form 1–3, Junior 1–3, Year 7–9) and RM320 a month for senior levels (Form 4–6, Senior 1–3, Year 10–11). Each month has 4 lessons.',
+        'Private 1-to-1 lessons start from RM70 an hour. The final rate depends on whether lessons are online or in person and, for in-person lessons, the location.',
+      ] },
+      { q: 'Do fees change over time?', a: [
+        "Group class fees follow the student's level, so they move to the senior rate when the student moves up, for example from Form 3 to Form 4.",
+        'Private 1-to-1 rates go up by RM10 an hour each year.',
+      ] },
+      { q: 'When are fees paid?', a: [
+        "Fees are paid at the start of each month. If payment is more than 2 weeks late, the student can't join lessons until it is settled.",
+      ] },
+      { q: 'Do you teach in person?', a: [
+        "Yes, where it works. In-person lessons take place near where the student lives, depending on whether I can travel to the area. Share your location in the enquiry and we'll agree the details together.",
+      ] },
+      { q: 'Are in-person 1-to-1 lessons available on weekdays?', a: [
+        "Weekday in-person 1-to-1 slots are very limited. Please still send an enquiry: if I don't have a slot that suits you, I can refer you to another tutor.",
+      ] },
+      { q: "What if the student can't make a lesson?", a: [
+        'Please let me know at least 24 hours before the lesson, especially for 1-to-1.',
+        "For 1-to-1, a lesson cancelled 24 hours or more ahead can be replaced at a time we agree on. With less than 24 hours' notice, the lesson is forfeited and not replaced.",
+      ] },
+      { q: 'Are missed group classes replaced?', a: [
+        'Group classes run on a fixed schedule, so missed classes are not replaced. A recording of the class is available on request, so the student can catch up.',
+      ] },
+      { q: 'How do I get started?', a: [
+        "Fill in the enquiry form above. It takes about a minute. I'll reply within 48 hours by WhatsApp or email with a suggested time and the fees.",
+      ] },
+    ],
+  },
   footer: { rights: (y) => `© ${y} Kangyan` },
   labels: {
     lessonTypes: { private: 'Private 1-to-1', group: 'Group class' },
@@ -150,12 +188,12 @@ const en = {
 const zh = {
   htmlLang: 'zh-Hans',
   meta: {
-    title: '理科与数学私人补习老师｜独中统考、SPM、IGCSE｜Kangyan',
-    description: '物理、化学、生物、科学、数学一对一私人补习与小组课，适合独中统考（初中、高中）、国中 SPM 和 IGCSE 学生。全马网课，平日晚上开课，一分钟完成咨询。',
+    title: '理科与数学补习｜独中统考、SPM、IGCSE｜小组课与一对一｜Kangyan',
+    description: '物理、化学、生物、科学、数学线上小组课（每班 2–5 人）与一对一私人补习，适合独中统考、国中 SPM 和 IGCSE 学生。小组课每月 RM280 起，一分钟完成咨询。',
   },
   seo: {
-    title: '独中统考、SPM、IGCSE 理科与数学私人补习',
-    intro: '物理、化学、生物、科学、数学的一对一私人补习和小组课。全马网课，面对面上课可另约，平日晚上开课。',
+    title: '独中统考、SPM、IGCSE 理科与数学补习',
+    intro: '物理、化学、生物、科学、数学的线上互动小组课（每班 2–5 人）和一对一私人补习，每堂课都附笔记和练习。全马网课，平日晚上上课，面对面课可另外安排。',
     groups: [
       { name: '独中统考（UEC）', levels: '初一至初三 · 高一至高三', subjects: '物理、化学、生物、科学、数学' },
       { name: '国中 SPM / KSSM', levels: '中一至中五', subjects: '物理、化学、生物、科学、数学' },
@@ -164,17 +202,17 @@ const zh = {
     pricing: {
       title: '学费',
       items: [
-        { name: '初中小组课（中一至中三）', price: 'RM280 / 月', note: '每月 4 堂课' },
-        { name: '高中小组课（中四至中六）', price: 'RM320 / 月', note: '每月 4 堂课' },
-        { name: '一对一私人课', price: 'RM70 / 小时起', note: '视网课或面对面而定，面对面课也看上课地点' },
+        { name: '初中小组课', price: 'RM280 / 月', note: '初一至初三 · 中一至中三 · 七至九年级，每月 4 堂课。' },
+        { name: '高中小组课', price: 'RM320 / 月', note: '高一至高三 · 中四至中六 · 十至十一年级，每月 4 堂课。' },
+        { name: '一对一私人课', price: 'RM70 / 小时起', note: '实际收费视网课或面对面而定，面对面课也看上课地点。' },
       ],
     },
   },
   nav: { switchLabel: 'Language / 语言' },
   intro: {
     eyebrow: '独中统考 · SPM · IGCSE ｜ 理科、数学补习',
-    title: ['', '一分钟', '约好补习时间。'],
-    sub: '回答几个简单的问题就好。我会在 48 小时内亲自回复你，咨询免费，不用急着决定。',
+    title: ['理科和数学，', '真正学懂', '才有好成绩。'],
+    sub: '独中统考、SPM、IGCSE 小组课与一对一私人补习。花一分钟回答几个问题，我会在 48 小时内亲自回复。咨询免费，没有任何承诺。',
   },
   wz: {
     stepOf: (i, n) => `第 ${i} 步，共 ${n} 步`,
@@ -205,21 +243,21 @@ const zh = {
     },
     name: {
       q: { parent: '孩子叫什么名字？', student: '你叫什么名字？' },
-      help: '大概一分钟就能填完，我好帮你安排合适的课。',
+      help: '回答几个简单问题，我就能推荐合适的课，大约一分钟。',
       ph: { parent: '孩子的姓名', student: '你的姓名' },
     },
     type: {
-      q: (n, who) => (who === 'parent' ? `想帮${n}报一对一，还是小组课？` : `${n}，想上一对一，还是小组课？`),
-      help: '还没想好也没关系，之后可以再改。',
-      private: { title: '一对一私人课', desc: '整堂课只顾一位学生，跟着他的进度和弱项来教。', price: 'RM70 / 小时起' },
-      group: { title: '小组课', desc: '几位程度相近的同学一起上，互相讨论、一起进步。', price: 'RM280–320 / 月 · 每月 4 堂' },
+      q: (n, who) => (who === 'parent' ? `想帮${n}报一对一，还是小组课？` : '想上一对一，还是小组课？'),
+      help: '以下是这个年级的学费，之后想改也可以。',
+      private: { title: '一对一私人课', desc: '完全按照学生的进度、弱项和目标来教。', price: 'RM70 / 小时起' },
+      group: { title: '小组课', desc: '每班 2–5 位同年级同学，线上互动教学，附笔记和练习。', price: (fee) => (fee ? `RM${fee} / 月 · 每月 4 堂` : 'RM280–320 / 月 · 每月 4 堂') },
       unavailable: '暂时没有空位',
       fullBadge: '已满',
       noGroup: '小组课目前都满了，先选一对一吧。一有小组课空位，我会马上通知你。',
       noPrivate: '一对一目前都满了，可以先报小组课。',
       allFull: '目前所有时段都满了。不过你还是可以先留个资料，一有空位我就联系你。',
     },
-    level: { q: (n, who) => (who === 'parent' ? `${n}现在读几年级？` : '你现在读几年级？'), help: '独中、国中、国际学校都可以。' },
+    level: { q: (n, who) => (who === 'parent' ? `${n}现在读几年级？` : `${n}你好！你现在读几年级？`), help: '独中、国中、国际学校都可以，学费按年级计算。' },
     school: {
       q: (n, who) => (who === 'parent' ? `${n}在哪间学校读书？` : '你在哪间学校读书？'),
       help: '打几个字就会出现学校名单，点选就好。找不到的话，直接打全名也可以。',
@@ -243,10 +281,11 @@ const zh = {
     },
     format: {
       q: '想上网课，还是面对面？',
+      privateHelp: '平日的一对一面对面时段非常有限。还是欢迎先咨询，如果我排不出时间，可以介绍其他老师给你。',
       opts: { online: ['网课', '在家就能上'], 'in-person': ['面对面', '到你家或附近上课'], either: ['都可以', '看哪个方便'] },
       location: '上课地点大概在哪里？',
       locationPh: '例如：蕉赖、梳邦、八打灵再也',
-      locationHint: '我看看能不能到你那边，会再跟你确认。',
+      locationHint: '上课地点以学生住处附近为主，我能不能过去会再跟你确认。',
     },
     contact: {
       q: '怎么联系你比较方便？',
@@ -269,6 +308,43 @@ const zh = {
         : '资料已经收到了。我会在 48 小时内通过 WhatsApp 或电邮联系你，跟你确认上课时间和学费。'),
       again: '再填一份',
     },
+  },
+  faq: {
+    title: '常见问题',
+    intro: '家长和学生报名前最常问的问题都在这里。还有疑问的话，直接送出咨询问我就好。',
+    items: [
+      { q: '小组课是怎么上的？', a: [
+        '每班 2 至 5 位同年级的学生，每个人都能被照顾到。全程线上直播互动，上课时需要开镜头，有问题随时可以问，大家一起讨论、一起做题。',
+        '每堂课都会提供笔记和练习。只要有一部能进线上会议的电脑、平板或手机就可以上课。',
+      ] },
+      { q: '学费怎么算？', a: [
+        '小组课：初中（初一至初三、中一至中三、七至九年级）每月 RM280；高中（高一至高三、中四至中六、十至十一年级）每月 RM320。每月 4 堂课。',
+        '一对一私人课 RM70 / 小时起，实际收费视网课或面对面而定，面对面课也看上课地点。',
+      ] },
+      { q: '学费会调整吗？', a: [
+        '小组课学费按年级计算，升上高中（例如中三升中四）就会按高中的学费收。',
+        '一对一私人课每年每小时调涨 RM10。',
+      ] },
+      { q: '学费什么时候缴？', a: [
+        '学费在每个月初缴付。如果迟交超过两个星期，缴清之前将无法继续上课。',
+      ] },
+      { q: '可以面对面上课吗？', a: [
+        '可以，视情况安排。面对面课的地点以学生住处附近为主，也要看我能不能到那一带。咨询时填上地区，我们再一起商量细节。',
+      ] },
+      { q: '平日有一对一面对面课吗？', a: [
+        '平日的一对一面对面时段非常有限。还是欢迎先送出咨询，如果我没有适合的时段，可以介绍其他老师给你。',
+      ] },
+      { q: '学生没办法来上课怎么办？', a: [
+        '请至少在上课前 24 小时通知我，一对一课尤其重要。',
+        '一对一课如果提前 24 小时或以上通知，可以跟我商量另外补课的时间；不到 24 小时才通知，该堂课将不会补回。',
+      ] },
+      { q: '小组课缺席可以补课吗？', a: [
+        '小组课按固定时间进行，缺席不另外补课。如有需要，可以向我索取该堂课的录影，自己补上进度。',
+      ] },
+      { q: '要怎么开始？', a: [
+        '填写上面的咨询表格就好，大约一分钟。我会在 48 小时内通过 WhatsApp 或电邮联系你，跟你确认上课时间和学费。',
+      ] },
+    ],
   },
   footer: { rights: (y) => `© ${y} Kangyan` },
   labels: {
