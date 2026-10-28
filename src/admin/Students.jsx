@@ -81,6 +81,12 @@ function PinCard({ s, pin, onClose, notify }) {
   )
 }
 
+/** Form values for editing an existing student. */
+export const formFromStudent = (s) => ({
+  ...BLANK, id: s.id, name: s.name, phone: localPhone(s.phone), level: s.level || '', lessonType: s.lesson_type, subjects: s.subjects || [],
+  lessons: (s.lessons || []).map(({ weekday, start, end }) => ({ weekday, start, end })), startDate: s.start_date || '', lang: s.lang, notes: s.notes || '',
+})
+
 const BLANK = { name: '', phone: '', level: '', lessonType: 'private', subjects: [], lessons: [NEW_LESSON], startDate: '', lang: 'en', notes: '' }
 
 /** One row per weekly lesson: day, start and end. Shows when it matches a timetable slot. */
@@ -325,7 +331,7 @@ export function StudentsTab({ students, setStudents, requests, setRequests, slot
                   <p className="scard__meta">{localPhone(s.phone)} · {s.last_login ? `last seen ${timeAgo(s.last_login)}` : 'not logged in yet'}{s.active ? '' : ' · deactivated'}</p>
                   {s.notes && <p className="scard__notes">{s.notes}</p>}
                   <footer>
-                    <button type="button" className="act" onClick={() => setForm({ ...BLANK, id: s.id, name: s.name, phone: localPhone(s.phone), level: s.level || '', lessonType: s.lesson_type, subjects: s.subjects || [], lessons: (s.lessons || []).map(({ weekday, start, end }) => ({ weekday, start, end })), startDate: s.start_date || '', lang: s.lang, notes: s.notes || '' })}><Icon name="edit" />Edit</button>
+                    <button type="button" className="act" onClick={() => setForm(formFromStudent(s))}><Icon name="edit" />Edit</button>
                     <button type="button" className="act" onClick={() => resetPin(s)}>New PIN</button>
                     <a className="act act--wa" href={waLink(s.phone)} target="_blank" rel="noopener noreferrer"><Icon name="chat" />WhatsApp</a>
                     <button type="button" className="act" onClick={() => setActive(s, !s.active)}>{s.active ? 'Deactivate' : 'Reactivate'}</button>

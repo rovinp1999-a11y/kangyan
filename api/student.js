@@ -11,7 +11,7 @@ import { SLOT_COLUMNS } from './slots.js'
 import { normalPhone, isPin, checkPin, hashPin, issueStudentToken, requireStudent } from './_students.js'
 import { notify } from './_notify.js'
 import { slotFits, slotLabel } from '../shared/constants.js'
-import { NOTICE_HOURS, upcomingDates, hoursUntil, todayMY, isDate, weekdayOf, startsAt, dateLabel } from '../shared/lessons.js'
+import { NOTICE_HOURS, WEEKS_AHEAD, upcomingDates, hoursUntil, todayMY, isDate, weekdayOf, startsAt, dateLabel } from '../shared/lessons.js'
 
 const MAX_FAILS = 8
 const WINDOW_MIN = 15
@@ -62,17 +62,23 @@ async function state(sql, s) {
 
   // One-off lessons already booked into a slot by anyone (so two students can't take the same replacement).
   const booked = await sql`
-    SELECT to_slot_id, to_char(to_date, 'YYYY-MM-DD') AS d FROM student_requests
+    SELECT to_slot_id, to_char(to_date, 'YYYY-MM-DD') AS d, student_id FROM student_requests
     WHERE kind = 'reschedule' AND status = ANY(${ACTIVE}) AND to_date >= ${todayMY()}::date`
   const busy = new Set(booked.map((x) => `${x.to_slot_id}|${x.d}`))
   const options = slots
     .filter((x) => x.status === 'open' && slotFits(x.kind, s.lesson_type) && !weekly.some((w) => sameLesson(w, x)))
-    .map((x) => ({ ...x, label: slotLabel(x), dates: upcomingDates(x, { weeks: 3 }).filter((d) => !busy.has(`${x.id}|${d}`)) }))
+    .map((x) => ({ ...x, label: slotLabel(x), dates: upcomingDates(x, { weeks: WEEKS_AHEAD }).filter((d) => !busy.has(`${x.id}|${d}`)) }))
 
   return {
     student: { name: s.name, level: s.level, lessonType: s.lesson_type, subjects: s.subjects, lang: s.lang },
     weekly: weekly.map((w) => ({ weekday: w.weekday, start: w.start, end: w.end })),
-    lessons, requests, options, noticeHours: NOTICE_HOURS,
+    lessons, requests, options, noticeHours: NOTICE_HOURS, weeksAhead: WEEKS_AHEAD, today: todayMY(), startDay: startDay || null,
+    // For the calendar: the tutor's slots this student could use, and one-off bookings by date.
+    // Only free / occupied is shared, never who is in a slot.
+    calendar: {
+      slots: slots.filter((x) => slotFits(x.kind, s.lesson_type)).map((x) => ({ id: x.id, weekday: x.weekday, start: x.start, end: x.end, status: x.status })),
+      booked: booked.map((x) => ({ slotId: x.to_slot_id, date: x.d, mine: x.student_id === s.id })),
+    },
     // Day and time of every slot, so the page can label requests in its own language.
     times: Object.fromEntries(slots.map((x) => [x.id, { weekday: x.weekday, start: x.start, end: x.end }])),
   }

@@ -3,7 +3,8 @@
 // or change the regular time. The tutor approves or rejects each request in the admin.
 import { useCallback, useEffect, useState } from 'react'
 import { useLang, shortRange } from '../i18n.jsx'
-import { dateLabel, NOTICE_HOURS } from '../../shared/lessons.js'
+import { dateLabel, NOTICE_HOURS, startsAt, weekdayOf } from '../../shared/lessons.js'
+import WeekCalendar, { weekDates } from '../components/WeekCalendar.jsx'
 import { S } from './strings.js'
 
 const KEY = 'kangyan-student-token'
@@ -57,10 +58,14 @@ function Login({ T, onToken }) {
 }
 
 /** Bottom sheet for one request: absence, reschedule (one lesson) or a new regular time. */
-function RequestSheet({ kind, lesson, st, T, L, lang, token, onClose, onSent }) {
-  const [slotId, setSlotId] = useState(null)
+function RequestSheet({ kind, lesson: given, preset, st, T, L, lang, token, onClose, onSent }) {
+  const [slotId, setSlotId] = useState(preset?.slotId ?? null)
+  const [pick, setPick] = useState(null) // which lesson to move, when started from a free slot
   const [from, setFrom] = useState(st.weekly.length === 1 ? st.weekly[0] : null) // which weekly lesson to change
-  const [date, setDate] = useState(null)
+  const [date, setDate] = useState(preset?.date ?? null)
+  const lesson = given || pick
+  // Lessons that can still be moved (12 hours' notice, no request yet).
+  const movable = st.lessons.filter((l) => !l.request && l.hours >= NOTICE_HOURS)
   const [note, setNote] = useState('')
   const [recording, setRecording] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -68,7 +73,8 @@ function RequestSheet({ kind, lesson, st, T, L, lang, token, onClose, onSent }) 
   const group = st.student.lessonType === 'group'
   const options = kind === 'reschedule' ? st.options.filter((o) => o.dates.length) : st.options
   const label = (o) => `${L.weekdays[o.weekday]} · ${shortRange(o.start, o.end, lang)}`
-  const ready = kind === 'absence' || (kind === 'change' && slotId && (from || !st.weekly.length)) || (kind === 'reschedule' && slotId && date)
+  const ready = kind === 'absence' || (kind === 'change' && slotId && (from || !st.weekly.length)) || (kind === 'reschedule' && slotId && date && lesson)
+  const presetSlot = preset && st.options.find((o) => o.id === preset.slotId)
   const d = lesson && `${dateLabel(lesson.date, lang)} ${shortRange(lesson.start, lesson.end, lang)}`
 
   useEffect(() => {
@@ -96,7 +102,7 @@ function RequestSheet({ kind, lesson, st, T, L, lang, token, onClose, onSent }) 
   }
 
   const h = { absence: T.sheet.absenceH, reschedule: T.sheet.rescheduleH, change: T.sheet.changeH }[kind]
-  const p = { absence: T.sheet.absenceP(d), reschedule: T.sheet.rescheduleP(d), change: T.sheet.changeP }[kind]
+  const p = { absence: T.sheet.absenceP(d), reschedule: lesson ? T.sheet.rescheduleP(d) : T.sheet.moveHereP, change: T.sheet.changeP }[kind]
   return (
     <div className="stu-sheet" role="dialog" aria-modal="true" aria-label={h}>
       <div className="stu-sheet__bg" onClick={() => onClose()} />
@@ -124,7 +130,25 @@ function RequestSheet({ kind, lesson, st, T, L, lang, token, onClose, onSent }) 
           </div>
         )}
 
-        {kind !== 'absence' && (options.length ? (
+        {kind === 'reschedule' && !given && (
+          <div className="stu-opts" role="radiogroup" aria-label={T.sheet.whichMove}>
+            <span className="stu-k">{T.sheet.whichMove}</span>
+            {movable.length ? movable.map((l) => (
+              <div key={`${l.date}-${l.start}`} className={`stu-opt ${pick === l ? 'is-on' : ''}`}>
+                <button type="button" role="radio" aria-checked={pick === l} onClick={() => setPick(l)}>{dateLabel(l.date, lang)} · {shortRange(l.start, l.end, lang)}</button>
+              </div>
+            )) : <p className="stu-note">{T.sheet.noneMovable}</p>}
+          </div>
+        )}
+
+        {presetSlot && (
+          <div className="stu-opts">
+            <span className="stu-k">{T.sheet.newTime}</span>
+            <div className="stu-opt is-on"><button type="button" disabled>{kind === 'reschedule' && date ? `${dateLabel(date, lang)} · ${shortRange(presetSlot.start, presetSlot.end, lang)}` : label(presetSlot)}</button></div>
+          </div>
+        )}
+
+        {kind !== 'absence' && !presetSlot && (options.length ? (
           <div className="stu-opts" role="radiogroup" aria-label={h}>
             {options.map((o) => (
               <div key={o.id} className={`stu-opt ${slotId === o.id ? 'is-on' : ''}`}>
@@ -153,6 +177,101 @@ function RequestSheet({ kind, lesson, st, T, L, lang, token, onClose, onSent }) 
           <button className="btn btn--accent" disabled={!ready || busy}>{busy ? T.sheet.sending : T.sheet.send}</button>
         </div>
       </form>
+    </div>
+  )
+}
+
+/** One week of the student's calendar: their lessons, plus the tutor's slots as free / occupied. */
+function studentWeek(st, week, T, L, lang) {
+  const now = Date.now()
+  const ACTIVE = ['pending', 'approved']
+  const short = (d) => (lang === 'zh' ? dateLabel(d, 'zh').split('（')[0] : dateLabel(d, 'en').split(' ').slice(1).join(' '))
+  return weekDates(st.today, week, weekdayOf).map((date) => {
+    const wd = weekdayOf(date)
+    const events = []
+    for (const l of st.lessons.filter((x) => x.date === date)) {
+      const r = l.request
+      const tone = !r ? 'mine' : r.status === 'pending' ? 'pending' : r.kind === 'absence' ? 'off' : 'moved'
+      events.push({ key: `m-${date}-${l.start}`, start: l.start, end: l.end, tone, dot: true, title: T.cal.mine, sub: r ? `${shortRange(l.start, l.end, lang)} · ${T.cal.tone[tone]}` : shortRange(l.start, l.end, lang), info: { type: 'mine', lesson: l } })
+    }
+    for (const r of st.requests.filter((x) => x.kind === 'reschedule' && ACTIVE.includes(x.status) && x.to_date === date)) {
+      const t = st.times[r.to_slot_id]
+      if (t) events.push({ key: `in-${r.id}`, start: t.start, end: t.end, tone: r.status === 'approved' ? 'mine' : 'pending', dot: true, title: T.cal.movedIn, sub: r.status === 'approved' ? shortRange(t.start, t.end, lang) : `${shortRange(t.start, t.end, lang)} · ${T.cal.tone.pending}`, info: { type: 'in', request: r } })
+    }
+    for (const sl of st.calendar.slots.filter((x) => x.weekday === wd)) {
+      if (st.weekly.some((w) => w.weekday === wd && w.start === sl.start && w.end === sl.end)) continue // their own regular lesson
+      const b = st.calendar.booked.find((x) => x.slotId === sl.id && x.date === date)
+      if (b?.mine) continue // shown above as a moved-in lesson
+      const started = startsAt(date, sl.start) <= now
+      const free = sl.status === 'open' && !b && !started
+      events.push({ key: `s-${sl.id}-${date}`, start: sl.start, end: sl.end, tone: free ? 'free' : 'busy', faded: started, title: free ? T.cal.free : T.cal.busy, sub: shortRange(sl.start, sl.end, lang), info: { type: free ? 'free' : 'busy', slot: sl, date } })
+    }
+    return { date, head: L.weekdaysShort[wd], sub: short(date), past: date < st.today, events }
+  })
+}
+
+/** What shows under the calendar for the tapped entry. */
+function CalDetail({ ev, st, T, L, lang, onSheet, onCancel }) {
+  const { info } = ev
+  const priv = st.student.lessonType === 'private'
+  const when = (date, a, b) => `${dateLabel(date, lang)} · ${shortRange(a, b, lang)}`
+  if (info.type === 'mine') {
+    const l = info.lesson
+    const r = l.request
+    const late = l.hours < st.noticeHours
+    return (
+      <div className={`stu-detail stu-detail--${ev.tone}`}>
+        <span className="stu-k">{T.cal.mine}</span>
+        <b>{when(l.date, l.start, l.end)}</b>
+        {r ? (
+          <>
+            <p>{r.kind === 'absence' ? T.status.absent[r.status] : T.status.moved[r.status](r.to_date ? when(r.to_date, st.times[r.to_slot_id]?.start || '', st.times[r.to_slot_id]?.end || '') : r.to_label)}</p>
+            {r.status === 'pending' && <button type="button" className="stu-link" onClick={() => onCancel(r.id)}>{T.withdraw}</button>}
+          </>
+        ) : (
+          <>
+            <div className="stu-detail__acts">
+              <button type="button" className="act" onClick={() => onSheet({ kind: 'absence', lesson: l })}>{T.cantMake}</button>
+              {priv && <button type="button" className="act act--main" disabled={late} onClick={() => onSheet({ kind: 'reschedule', lesson: l })}>{T.reschedule}</button>}
+            </div>
+            {priv && late && <p className="stu-late">{T.tooLate(st.noticeHours)}</p>}
+          </>
+        )}
+      </div>
+    )
+  }
+  if (info.type === 'in') {
+    const r = info.request
+    const t = st.times[r.to_slot_id]
+    return (
+      <div className={`stu-detail stu-detail--${ev.tone}`}>
+        <span className="stu-k">{T.cal.movedIn}</span>
+        <b>{t ? when(r.to_date, t.start, t.end) : r.to_label}</b>
+        <p>{T.cal.movedFrom(dateLabel(r.lesson_date, lang))} · {T.reqStatus[r.status]}</p>
+        {r.status === 'pending' && <button type="button" className="stu-link" onClick={() => onCancel(r.id)}>{T.withdraw}</button>}
+      </div>
+    )
+  }
+  if (info.type === 'free') {
+    const { slot, date } = info
+    const canMove = priv && st.options.some((o) => o.id === slot.id && o.dates.includes(date))
+    return (
+      <div className="stu-detail stu-detail--free">
+        <span className="stu-k">{T.cal.free}</span>
+        <b>{when(date, slot.start, slot.end)}</b>
+        <p>{T.cal.freeP}</p>
+        <div className="stu-detail__acts">
+          {canMove && <button type="button" className="act act--main" onClick={() => onSheet({ kind: 'reschedule', preset: { slotId: slot.id, date } })}>{T.cal.moveHere}</button>}
+          <button type="button" className="act" onClick={() => onSheet({ kind: 'change', preset: { slotId: slot.id } })}>{T.cal.makeRegular(L.weekdays[slot.weekday])}</button>
+        </div>
+      </div>
+    )
+  }
+  return (
+    <div className="stu-detail stu-detail--busy">
+      <span className="stu-k">{T.cal.busy}</span>
+      <b>{when(info.date, info.slot.start, info.slot.end)}</b>
+      <p>{ev.faded ? T.cal.pastP : T.cal.busyP}</p>
     </div>
   )
 }
@@ -204,7 +323,9 @@ export default function StudentPage() {
   const [token, setToken] = useState(getTok)
   const [st, setSt] = useState(null)
   const [loadErr, setLoadErr] = useState('')
-  const [sheet, setSheet] = useState(null) // { kind, lesson? }
+  const [sheet, setSheet] = useState(null) // { kind, lesson?, preset? }
+  const [week, setWeek] = useState(0)
+  const [sel, setSel] = useState(null) // key of the tapped calendar entry
   const [toast, setToast] = useState(null)
 
   useEffect(() => {
@@ -251,9 +372,6 @@ export default function StudentPage() {
     if (!x) return ''
     return `${date ? dateLabel(date, lang) : L.weekdays[x.weekday]} ${shortRange(x.start, x.end, lang)}`
   }
-  const lessonState = (r) => (r.kind === 'absence'
-    ? T.status.absent[r.status]
-    : T.status.moved[r.status](timeOf(r.to_slot_id, r.to_date) || r.to_label))
 
   const header = (
     <header className="stu-top">
@@ -267,7 +385,6 @@ export default function StudentPage() {
 
   if (!token) return <div className="stu">{header}<main className="stu-main"><Login T={T} onToken={saveToken} /></main></div>
 
-  const priv = st?.student.lessonType === 'private'
   return (
     <div className="stu">
       {header}
@@ -293,32 +410,28 @@ export default function StudentPage() {
               </div>
             </section>
 
-            <section className="stu-card">
-              <h2>{T.upcoming}</h2>
-              {st.lessons.length ? (
-                <ul className="stu-lessons">
-                  {st.lessons.map((l) => {
-                    const late = l.hours < st.noticeHours
-                    return (
-                      <li key={`${l.date}-${l.start}`} className={`stu-lesson ${l.request ? `is-${l.request.kind}` : ''}`}>
-                        <div className="stu-lesson__when">
-                          <b>{dateLabel(l.date, lang)}</b>
-                          <span>{shortRange(l.start, l.end, lang)}</span>
-                        </div>
-                        {l.request ? (
-                          <span className={`stu-chip stu-chip--${l.request.status}`}>{lessonState(l.request)}</span>
-                        ) : (
-                          <div className="stu-lesson__acts">
-                            <button type="button" className="act" onClick={() => setSheet({ kind: 'absence', lesson: l })}>{T.cantMake}</button>
-                            {priv && <button type="button" className="act act--main" disabled={late} onClick={() => setSheet({ kind: 'reschedule', lesson: l })}>{T.reschedule}</button>}
-                          </div>
-                        )}
-                        {!l.request && priv && late && <p className="stu-late">{T.tooLate(st.noticeHours)}</p>}
-                      </li>
-                    )
-                  })}
+            <section className="stu-card stu-cal">
+              <div className="stu-cal__head">
+                <h2>{T.cal.title}</h2>
+                <ul className="stu-legend">
+                  {['mine', 'pending', 'free', 'busy'].map((k) => <li key={k}><i className={`wc__dot wc__dot--${k}`} />{T.cal.legend[k]}</li>)}
                 </ul>
-              ) : <p className="stu-muted">{st.weekly.length ? T.noLessons : T.noSlot}</p>}
+              </div>
+              {(() => {
+                const days = studentWeek(st, week, T, L, lang)
+                const picked = days.flatMap((d) => d.events).find((e) => e.key === sel)
+                return (
+                  <>
+                    <WeekCalendar
+                      days={days} week={week} weeks={st.weeksAhead} onWeek={(n) => { setWeek(n); setSel(null) }}
+                      selected={sel} onSelect={(e) => setSel(e.key === sel ? null : e.key)} today={st.today}
+                      title={`${days[0].sub} – ${days[6].sub}`}
+                      labels={{ prev: T.cal.prev, next: T.cal.next, today: T.cal.thisWeek, empty: T.cal.empty, hour: (h) => (lang === 'zh' ? `${h}点` : `${h % 12 || 12}${h < 12 ? 'am' : 'pm'}`) }}
+                    />
+                    {picked ? <CalDetail ev={picked} st={st} T={T} L={L} lang={lang} onSheet={setSheet} onCancel={cancel} /> : <p className="stu-muted stu-cal__hint">{st.weekly.length ? T.cal.hint : T.noSlot}</p>}
+                  </>
+                )
+              })()}
             </section>
 
             <section className="stu-card stu-change">
