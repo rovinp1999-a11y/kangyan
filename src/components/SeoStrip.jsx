@@ -19,6 +19,18 @@ export default function SeoStrip({ headingLevel = 2 }) {
             </li>
           ))}
         </ul>
+        <div className="seo__pricing">
+          <h3 className="seo__ptitle">{t.seo.pricing.title}</h3>
+          <ul className="seo__prices">
+            {t.seo.pricing.items.map((p) => (
+              <li key={p.name}>
+                <span className="seo__pname">{p.name}</span>
+                <strong className="seo__pprice">{p.price}</strong>
+                <span className="seo__pnote">{p.note}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
     </section>
   )

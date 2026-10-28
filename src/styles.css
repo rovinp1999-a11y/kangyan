@@ -140,6 +140,7 @@ textarea.wz__input { resize: vertical; min-height: 0; font-size: 1rem; }
 .wz__cardic svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 .wz__cardtxt strong { display: block; font-family: var(--ff-display); font-size: 1.1rem; }
 .wz__cardtxt span { display: block; font-size: .86rem; color: var(--muted); margin-top: 3px; line-height: 1.45; }
+.wz__cardtxt .wz__price { color: var(--purple); font-weight: 700; margin-top: 6px; }
 
 /* level buttons */
 .wz__grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 18px; }
@@ -268,9 +269,17 @@ textarea.wz__input { resize: vertical; min-height: 0; font-size: 1rem; }
 .seo__levels { color: var(--purple); font-weight: 600; font-size: .82rem; align-self: center; }
 .seo__subjects { grid-column: 1 / -1; color: var(--ink-soft); }
 :lang(zh) .seo__intro, :lang(zh) .seo__groups { line-height: 1.75; }
+.seo__pricing { grid-column: 1 / -1; margin-top: 8px; }
+.seo__ptitle { font-size: 1.05rem; margin-bottom: 10px; }
+.seo__prices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.seo__prices li { display: grid; gap: 2px; padding: 12px 14px; border: 1.5px solid var(--line); border-radius: 14px; background: var(--paper); font-size: .9rem; }
+.seo__pname { font-weight: 600; }
+.seo__pprice { font-family: var(--ff-display); font-size: 1.15rem; color: var(--purple); }
+.seo__pnote { color: var(--muted); font-size: .84rem; line-height: 1.45; }
 @media (max-width: 860px) {
   .seo__inner { grid-template-columns: 1fr; }
   .seo__title, .seo__intro, .seo__groups { grid-column: 1; grid-row: auto; }
+  .seo__prices { grid-template-columns: 1fr; }
 }
 /* Static crawler text inside #root before React loads */
 .seo-fallback { max-width: 720px; margin: 40px auto; padding: 0 20px; font-family: var(--ff-text); color: var(--ink); line-height: 1.6; }

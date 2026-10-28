@@ -20,6 +20,14 @@ const en = {
       { name: 'SPM / KSSM', levels: 'Form 1–5', subjects: 'Physics, Chemistry, Biology, Science, Mathematics' },
       { name: 'IGCSE', levels: 'Year 7–11', subjects: 'Physics 0625, Chemistry 0620, Biology 0610, Mathematics 0580' },
     ],
+    pricing: {
+      title: 'Fees',
+      items: [
+        { name: 'Group class, junior (Form 1–3)', price: 'RM280 / month', note: '4 lessons a month' },
+        { name: 'Group class, senior (Form 4–6)', price: 'RM320 / month', note: '4 lessons a month' },
+        { name: 'Private 1-to-1', price: 'From RM70 / hour', note: 'Depends on online or in person, and for in-person lessons, the location' },
+      ],
+    },
   },
   nav: { switchLabel: 'Language / 语言' },
   intro: {
@@ -62,8 +70,8 @@ const en = {
     type: {
       q: (n, who) => (who === 'parent' ? `Private 1-to-1 or a group class for ${n}?` : `Hi ${n}! Private 1-to-1 or a group class?`),
       help: 'You can change this later.',
-      private: { title: 'Private 1-to-1', desc: "Lessons built around one student's pace and gaps." },
-      group: { title: 'Group class', desc: 'Learn alongside a few students at the same level.' },
+      private: { title: 'Private 1-to-1', desc: "Lessons built around one student's pace and gaps.", price: 'From RM70 / hour' },
+      group: { title: 'Group class', desc: 'Learn alongside a few students at the same level.', price: 'RM280–320 / month · 4 lessons' },
       unavailable: 'No open slots right now',
       fullBadge: 'Full',
       noGroup: "Group classes are full right now. Please choose Private 1-to-1, and I'll let you know when a group class opens.",
@@ -153,6 +161,14 @@ const zh = {
       { name: '国中 SPM / KSSM', levels: '中一至中五', subjects: '物理、化学、生物、科学、数学' },
       { name: 'IGCSE', levels: '七年级至十一年级', subjects: '物理 0625、化学 0620、生物 0610、数学 0580' },
     ],
+    pricing: {
+      title: '学费',
+      items: [
+        { name: '初中小组课（中一至中三）', price: 'RM280 / 月', note: '每月 4 堂课' },
+        { name: '高中小组课（中四至中六）', price: 'RM320 / 月', note: '每月 4 堂课' },
+        { name: '一对一私人课', price: 'RM70 / 小时起', note: '视网课或面对面而定，面对面课也看上课地点' },
+      ],
+    },
   },
   nav: { switchLabel: 'Language / 语言' },
   intro: {
@@ -195,8 +211,8 @@ const zh = {
     type: {
       q: (n, who) => (who === 'parent' ? `想帮${n}报一对一，还是小组课？` : `${n}，想上一对一，还是小组课？`),
       help: '还没想好也没关系，之后可以再改。',
-      private: { title: '一对一私人课', desc: '整堂课只顾一位学生，跟着他的进度和弱项来教。' },
-      group: { title: '小组课', desc: '几位程度相近的同学一起上，互相讨论、一起进步。' },
+      private: { title: '一对一私人课', desc: '整堂课只顾一位学生，跟着他的进度和弱项来教。', price: 'RM70 / 小时起' },
+      group: { title: '小组课', desc: '几位程度相近的同学一起上，互相讨论、一起进步。', price: 'RM280–320 / 月 · 每月 4 堂' },
       unavailable: '暂时没有空位',
       fullBadge: '已满',
       noGroup: '小组课目前都满了，先选一对一吧。一有小组课空位，我会马上通知你。',

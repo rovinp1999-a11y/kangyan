@@ -312,6 +312,7 @@ export default function Wizard() {
                   <span className="wz__cardtxt">
                     <strong>{w.type[k].title}</strong>
                     <span>{off ? w.type.unavailable : w.type[k].desc}</span>
+                    {!off && <span className="wz__price">{w.type[k].price}</span>}
                   </span>
                   {off && <span className="wz__badge">{w.type.fullBadge}</span>}
                 </button>
