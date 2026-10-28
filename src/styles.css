@@ -168,11 +168,10 @@ textarea.wz__input { resize: vertical; min-height: 0; font-size: 1rem; }
 .wz__ttrow:first-child { border-top: 0; }
 .wz__ttday { font-weight: 700; font-size: .9rem; }
 .wz__ttslots { display: flex; flex-wrap: wrap; gap: 6px; }
-.wz__slot { font: inherit; font-size: .86rem; font-weight: 600; padding: 8px 13px; min-height: 42px; border-radius: 999px; border: 2px solid var(--ink); background: var(--white); color: var(--ink); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: background .12s, transform .12s; }
+.wz__slot { font: inherit; font-size: .86rem; font-weight: 600; padding: 8px 13px; min-height: 42px; border-radius: 999px; border: 2px solid var(--ink); background: var(--white); color: var(--ink); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: background .12s, border-color .12s, color .12s, transform .12s; }
 .wz__slot:hover:not(:disabled) { transform: translateY(-1px); }
 .wz__slot:focus-visible { outline: 3px solid var(--purple); outline-offset: 2px; }
-.wz__slot.is-on { background: var(--yellow); }
-.wz__slot.is-on::before { content: "✓"; font-weight: 800; }
+.wz__slot.is-on { background: var(--green); }
 .wz__slot.is-taken { background: transparent; border-style: dashed; border-color: #A8A3B3; color: #A8A3B3; cursor: not-allowed; }
 .wz__slot small { font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
 .wz__count { margin-top: 10px; font-size: .85rem; font-weight: 600; color: var(--muted); }
