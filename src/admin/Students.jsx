@@ -1,7 +1,7 @@
 // Existing students: their regular weekly slot, login PIN, and the requests they send
 // from the student page (move one lesson, absence, new regular time).
 import { useEffect, useMemo, useState } from 'react'
-import { LEVEL_GROUPS, SUBJECTS, WEEKDAYS, slotFits, slotLabel } from '../../shared/constants.js'
+import { LEVEL_GROUPS, SUBJECTS, WEEKDAYS, WEEKDAYS_SHORT, formatTime, slotLabel } from '../../shared/constants.js'
 import { dateLabel } from '../../shared/lessons.js'
 import { STRINGS, shortRange } from '../i18n.jsx'
 import { Icon, KIND_SHORT, api, fullDate, timeAgo, waLink } from './lib.jsx'
@@ -12,6 +12,12 @@ const KIND_LABEL = { reschedule: 'Move one lesson', absence: 'Absence', change: 
 const STATUS = { pending: 'Waiting', approved: 'Approved', rejected: 'Rejected', cancelled: 'Withdrawn' }
 const localPhone = (p) => (p?.startsWith('60') ? `0${p.slice(2)}` : p || '')
 const first = (n) => n.trim().split(/\s+/)[0]
+const weeklyText = (l) => `${WEEKDAYS[l.weekday]} · ${shortRange(l.start, l.end, 'en')}`
+const toT = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
+const toM = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
+// Half-hour choices from 7 AM to 10 PM for the weekly lesson rows.
+const TIMES = Array.from({ length: 31 }, (_, i) => toT(7 * 60 + i * 30))
+const NEW_LESSON = { weekday: 0, start: '17:30', end: '19:00' }
 
 /** Short day + time of a slot in the student's language, for WhatsApp messages. */
 function timeText(slot, date, lang) {
@@ -36,7 +42,7 @@ function decisionMessage(r, s, slots, approved) {
   const what = {
     reschedule: zh ? `${lesson} 的课改到 ${timeText(to, r.to_date, lang)}` : `moving your lesson on ${lesson} to ${timeText(to, r.to_date, lang)}`,
     absence: zh ? `${lesson} 请假${r.recording ? '（会发录影给你）' : ''}` : `your absence on ${lesson}${r.recording ? ' (I will send you the recording)' : ''}`,
-    change: zh ? `固定上课时间改到${timeText(to, null, lang)}` : `changing your regular time to ${timeText(to, null, lang)}`,
+    change: zh ? `固定上课时间改到${timeText(to, null, lang)}` : `changing your regular lesson to ${timeText(to, null, lang)}`,
   }[r.kind]
   const reply = r.reply ? `\n\n${r.reply}` : ''
   if (zh) return `${s.name}你好！${approved ? '已经确认' : '抱歉，这次没办法安排'}：${what}。${reply}\n\n${SITE}`
@@ -45,10 +51,10 @@ function decisionMessage(r, s, slots, approved) {
 
 function requestText(r, s, slots) {
   const to = slots.find((x) => x.id === r.to_slot_id)
-  const cur = slots.find((x) => x.id === s?.slot_id)
-  if (r.kind === 'reschedule') return `${dateLabel(r.lesson_date)} → ${to ? `${dateLabel(r.to_date)} ${shortRange(to.start, to.end, 'en')}` : r.to_label}`
-  if (r.kind === 'absence') return `${dateLabel(r.lesson_date)}${r.recording ? ' · wants the recording' : ''}`
-  return `${cur ? slotLabel(cur) : 'No regular time'} → ${to ? slotLabel(to) : r.to_label}`
+  const at = r.from_lesson ? ` ${shortRange(r.from_lesson.start, r.from_lesson.end, 'en')}` : ''
+  if (r.kind === 'reschedule') return `${dateLabel(r.lesson_date)}${at} → ${to ? `${dateLabel(r.to_date)} ${shortRange(to.start, to.end, 'en')}` : r.to_label}`
+  if (r.kind === 'absence') return `${dateLabel(r.lesson_date)}${at}${r.recording ? ' · wants the recording' : ''}`
+  return `${r.from_lesson ? `${WEEKDAYS_SHORT[r.from_lesson.weekday]}${at}` : 'New weekly lesson'} → ${to ? slotLabel(to) : r.to_label}`
 }
 
 /** Login details shown once after creating a student or giving a new PIN. */
@@ -75,12 +81,58 @@ function PinCard({ s, pin, onClose, notify }) {
   )
 }
 
-const BLANK = { name: '', phone: '', level: '', lessonType: 'private', subjects: [], slotId: '', startDate: '', lang: 'en', notes: '' }
+const BLANK = { name: '', phone: '', level: '', lessonType: 'private', subjects: [], lessons: [NEW_LESSON], startDate: '', lang: 'en', notes: '' }
+
+/** One row per weekly lesson: day, start and end. Shows when it matches a timetable slot. */
+function WeeklyLessons({ value, onChange, slots, lessonType, own = [] }) {
+  const setRow = (i, k, v) => onChange(value.map((l, j) => {
+    if (j !== i) return l
+    const next = { ...l, [k]: k === 'weekday' ? Number(v) : v }
+    // Moving the start keeps the length; an end before the start is pushed back.
+    if (k === 'start') next.end = toT(Math.min(toM('22:00'), toM(v) + (toM(l.end) - toM(l.start))))
+    if (toM(next.end) <= toM(next.start)) next.end = toT(Math.min(toM('22:00'), toM(next.start) + 30))
+    return next
+  }))
+  return (
+    <div className="wl">
+      {value.map((l, i) => {
+        const slot = slots.find((x) => x.weekday === l.weekday && x.start === l.start && x.end === l.end)
+        const mins = toM(l.end) - toM(l.start)
+        return (
+          <div className="wl__row" key={i}>
+            <select className="wl__day" value={l.weekday} onChange={(e) => setRow(i, 'weekday', e.target.value)} aria-label={`Lesson ${i + 1} day`}>
+              {WEEKDAYS.map((d, k) => <option key={d} value={k}>{d}</option>)}
+            </select>
+            <select className="wl__start" value={l.start} onChange={(e) => setRow(i, 'start', e.target.value)} aria-label={`Lesson ${i + 1} start`}>
+              {TIMES.slice(0, -1).map((t) => <option key={t} value={t}>{formatTime(t)}</option>)}
+            </select>
+            <span className="wl__to">to</span>
+            <select className="wl__end" value={l.end} onChange={(e) => setRow(i, 'end', e.target.value)} aria-label={`Lesson ${i + 1} end`}>
+              {TIMES.filter((t) => toM(t) > toM(l.start)).map((t) => <option key={t} value={t}>{formatTime(t)}</option>)}
+            </select>
+            <button type="button" className="icon-btn icon-btn--danger" onClick={() => onChange(value.filter((_, j) => j !== i))} aria-label={`Remove lesson ${i + 1}`}><Icon name="x" /></button>
+            <small className="wl__info">
+              {mins / 60} hour{mins === 60 ? '' : 's'}
+              {!slot ? ' · not one of your timetable slots'
+                : slot.status === 'taken' && !own.some((o) => o.weekday === l.weekday && o.start === l.start && o.end === l.end)
+                  ? ' · ⚠ this timetable slot is already taken'
+                  : ` · matches your timetable slot${lessonType === 'private' ? ' (will be marked taken)' : ''}`}
+            </small>
+          </div>
+        )
+      })}
+      {value.length < 7 && (
+        <button type="button" className="act wl__add" onClick={() => onChange([...value, value.length ? { ...value[value.length - 1], weekday: (value[value.length - 1].weekday + 2) % 7 } : NEW_LESSON])}>
+          <Icon name="plus" />{value.length ? 'Add another weekly lesson' : 'Add a weekly lesson'}
+        </button>
+      )}
+    </div>
+  )
+}
 
 function StudentForm({ initial, slots, onSave, onCancel, busy }) {
   const [f, setF] = useState(initial)
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }))
-  const fits = slots.filter((s) => slotFits(s.kind, f.lessonType))
   const editing = !!initial.id
   return (
     <form className="sform" onSubmit={(e) => { e.preventDefault(); onSave(f) }}>
@@ -97,7 +149,7 @@ function StudentForm({ initial, slots, onSave, onCancel, busy }) {
         <div className="sform__f"><span>Class</span>
           <div className="kindpick" role="group" aria-label="Class type">
             {['private', 'group'].map((k) => (
-              <button key={k} type="button" className={`kindpick__b kindpick__b--${k} ${f.lessonType === k ? 'is-on' : ''}`} aria-pressed={f.lessonType === k} onClick={() => setF((x) => ({ ...x, lessonType: k, slotId: '' }))}>{KIND_SHORT[k]}</button>
+              <button key={k} type="button" className={`kindpick__b kindpick__b--${k} ${f.lessonType === k ? 'is-on' : ''}`} aria-pressed={f.lessonType === k} onClick={() => set('lessonType', k)}>{KIND_SHORT[k]}</button>
             ))}
           </div>
         </div>
@@ -111,13 +163,9 @@ function StudentForm({ initial, slots, onSave, onCancel, busy }) {
           ))}
         </div>
       </div>
-      <label className="sform__f"><span>Regular weekly time</span>
-        <select value={f.slotId} onChange={(e) => set('slotId', e.target.value)}>
-          <option value="">Not set yet</option>
-          {fits.map((s) => <option key={s.id} value={s.id}>{slotLabel(s)} · {KIND_SHORT[s.kind]}{s.status === 'taken' && String(s.id) !== String(initial.slotId) ? ' · taken' : ''}</option>)}
-        </select>
-        {f.lessonType === 'private' && <small>A 1-to-1 student's slot is marked taken on the timetable.</small>}
-      </label>
+      <div className="sform__f"><span>Weekly lessons</span>
+        <WeeklyLessons value={f.lessons} onChange={(v) => set('lessons', v)} slots={slots} lessonType={f.lessonType} own={initial.id ? initial.lessons : []} />
+      </div>
       <div className="sform__row">
         <label className="sform__f"><span>First lesson (optional)</span><input type="date" value={f.startDate} onChange={(e) => set('startDate', e.target.value)} /></label>
         <label className="sform__f"><span>Messages in</span>
@@ -173,7 +221,7 @@ export function StudentsTab({ students, setStudents, requests, setRequests, slot
   const save = async (f) => {
     setBusy(true)
     try {
-      const body = { ...f, slotId: f.slotId === '' ? null : Number(f.slotId), startDate: f.startDate || null }
+      const body = { ...f, lessons: f.lessons.map(({ weekday, start, end }) => ({ weekday, start, end })), startDate: f.startDate || null }
       if (f.id) {
         const { student } = await api('/api/admin/students', { method: 'POST', body: { action: 'update', ...body } })
         setStudents((list) => list.map((x) => (x.id === student.id ? student : x)))
@@ -259,7 +307,6 @@ export function StudentsTab({ students, setStudents, requests, setRequests, slot
         ) : (
           <div className="slist">
             {shown.map((s) => {
-              const slot = slots.find((x) => x.id === s.slot_id)
               const waiting = pending.filter((r) => r.student_id === s.id).length
               return (
                 <article key={s.id} className={`scard ${s.active ? '' : 'is-off'}`}>
@@ -270,11 +317,15 @@ export function StudentsTab({ students, setStudents, requests, setRequests, slot
                     </div>
                     {waiting > 0 && <span className="badge" title="Requests waiting">{waiting}</span>}
                   </header>
-                  <p className="scard__slot"><Icon name="calendar" />{slot ? `Every ${WEEKDAYS[slot.weekday]} · ${shortRange(slot.start, slot.end, 'en')}` : 'No regular time yet'}</p>
+                  <div className="scard__slots">
+                    {(s.lessons || []).length
+                      ? s.lessons.map((l) => <p className="scard__slot" key={`${l.weekday}-${l.start}`}><Icon name="calendar" />Every {weeklyText(l)}</p>)
+                      : <p className="scard__slot is-none"><Icon name="calendar" />No weekly lessons yet</p>}
+                  </div>
                   <p className="scard__meta">{localPhone(s.phone)} · {s.last_login ? `last seen ${timeAgo(s.last_login)}` : 'not logged in yet'}{s.active ? '' : ' · deactivated'}</p>
                   {s.notes && <p className="scard__notes">{s.notes}</p>}
                   <footer>
-                    <button type="button" className="act" onClick={() => setForm({ ...BLANK, id: s.id, name: s.name, phone: localPhone(s.phone), level: s.level || '', lessonType: s.lesson_type, subjects: s.subjects || [], slotId: s.slot_id ?? '', startDate: s.start_date || '', lang: s.lang, notes: s.notes || '' })}><Icon name="edit" />Edit</button>
+                    <button type="button" className="act" onClick={() => setForm({ ...BLANK, id: s.id, name: s.name, phone: localPhone(s.phone), level: s.level || '', lessonType: s.lesson_type, subjects: s.subjects || [], lessons: (s.lessons || []).map(({ weekday, start, end }) => ({ weekday, start, end })), startDate: s.start_date || '', lang: s.lang, notes: s.notes || '' })}><Icon name="edit" />Edit</button>
                     <button type="button" className="act" onClick={() => resetPin(s)}>New PIN</button>
                     <a className="act act--wa" href={waLink(s.phone)} target="_blank" rel="noopener noreferrer"><Icon name="chat" />WhatsApp</a>
                     <button type="button" className="act" onClick={() => setActive(s, !s.active)}>{s.active ? 'Deactivate' : 'Reactivate'}</button>

@@ -15,7 +15,7 @@ import { NOTICE_HOURS, upcomingDates, hoursUntil, todayMY, isDate, weekdayOf, st
 
 const MAX_FAILS = 8
 const WINDOW_MIN = 15
-const REQ_COLUMNS = `id, created_at, kind, to_char(lesson_date, 'YYYY-MM-DD') AS lesson_date, to_slot_id,
+const REQ_COLUMNS = `id, created_at, kind, to_char(lesson_date, 'YYYY-MM-DD') AS lesson_date, from_lesson, to_slot_id,
   to_char(to_date, 'YYYY-MM-DD') AS to_date, to_label, recording, note, status, reply, decided_at`
 const ACTIVE = ['pending', 'approved']
 const str = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '')
@@ -41,17 +41,24 @@ async function login(req, res, sql, b) {
   return send(res, 200, { ok: true, token: issueStudentToken(s) })
 }
 
+const sameLesson = (a, b) => a && b && a.weekday === b.weekday && a.start === b.start
+const weeklyLabel = (w) => slotLabel(w)
+
 /** Everything the student page shows. */
 async function state(sql, s) {
   const slots = await sql.query(`SELECT ${SLOT_COLUMNS} FROM availability_slots ORDER BY weekday, start_time`)
-  const slot = slots.find((x) => x.id === s.slot_id) || null
+  const weekly = (Array.isArray(s.lessons) ? s.lessons : []).slice().sort((a, b) => a.weekday - b.weekday || a.start.localeCompare(b.start))
   const requests = await sql.query(`SELECT ${REQ_COLUMNS} FROM student_requests WHERE student_id = $1 ORDER BY created_at DESC LIMIT 60`, [s.id])
   const [{ start_day: startDay }] = await sql`SELECT to_char(start_date, 'YYYY-MM-DD') AS start_day FROM students WHERE id = ${s.id}`
 
-  const lessons = upcomingDates(slot, { from: startDay || undefined }).map((date) => {
-    const r = requests.find((x) => x.lesson_date === date && x.kind !== 'change' && ACTIVE.includes(x.status))
-    return { date, start: slot.start, end: slot.end, hours: hoursUntil(date, slot.start), request: r || null }
-  })
+  // Every upcoming lesson from every weekly time, soonest first.
+  const lessons = weekly
+    .flatMap((w) => upcomingDates(w, { from: startDay || undefined }).map((date) => ({ date, weekday: w.weekday, start: w.start, end: w.end })))
+    .sort((a, b) => startsAt(a.date, a.start) - startsAt(b.date, b.start))
+    .map((l) => {
+      const r = requests.find((x) => x.lesson_date === l.date && x.kind !== 'change' && ACTIVE.includes(x.status) && (!x.from_lesson || x.from_lesson.start === l.start))
+      return { ...l, hours: hoursUntil(l.date, l.start), request: r || null }
+    })
 
   // One-off lessons already booked into a slot by anyone (so two students can't take the same replacement).
   const booked = await sql`
@@ -59,12 +66,12 @@ async function state(sql, s) {
     WHERE kind = 'reschedule' AND status = ANY(${ACTIVE}) AND to_date >= ${todayMY()}::date`
   const busy = new Set(booked.map((x) => `${x.to_slot_id}|${x.d}`))
   const options = slots
-    .filter((x) => x.status === 'open' && slotFits(x.kind, s.lesson_type) && x.id !== s.slot_id)
+    .filter((x) => x.status === 'open' && slotFits(x.kind, s.lesson_type) && !weekly.some((w) => sameLesson(w, x)))
     .map((x) => ({ ...x, label: slotLabel(x), dates: upcomingDates(x, { weeks: 3 }).filter((d) => !busy.has(`${x.id}|${d}`)) }))
 
   return {
     student: { name: s.name, level: s.level, lessonType: s.lesson_type, subjects: s.subjects, lang: s.lang },
-    slot: slot && { ...slot, label: slotLabel(slot) },
+    weekly: weekly.map((w) => ({ weekday: w.weekday, start: w.start, end: w.end })),
     lessons, requests, options, noticeHours: NOTICE_HOURS,
     // Day and time of every slot, so the page can label requests in its own language.
     times: Object.fromEntries(slots.map((x) => [x.id, { weekday: x.weekday, start: x.start, end: x.end }])),
@@ -77,16 +84,22 @@ async function createRequest(res, sql, s, b) {
   const st = await state(sql, s)
   const note = str(b.note, 500)
   let lessonDate = null
+  let fromLesson = null
   let toSlot = null
   let toDate = null
 
   if (kind === 'reschedule' || kind === 'absence') {
     if (kind === 'reschedule' && s.lesson_type !== 'private') return fail(res, 400, 'Group classes are not moved', 'group')
-    const lesson = st.lessons.find((l) => l.date === b.lessonDate)
+    const lesson = st.lessons.find((l) => l.date === b.lessonDate && (!b.lessonStart || l.start === b.lessonStart))
     if (!lesson) return fail(res, 400, 'That lesson is not coming up', 'invalid')
     if (lesson.request) return fail(res, 409, 'There is already a request for that lesson', 'duplicate')
     if (kind === 'reschedule' && lesson.hours < NOTICE_HOURS) return fail(res, 400, 'Less than 12 hours before the lesson', 'notice')
     lessonDate = lesson.date
+    fromLesson = { weekday: lesson.weekday, start: lesson.start, end: lesson.end }
+  }
+  if (kind === 'change') {
+    fromLesson = st.weekly.find((w) => w.weekday === Number(b.fromWeekday) && w.start === b.fromStart) || (st.weekly.length === 1 ? st.weekly[0] : null)
+    if (st.weekly.length && !fromLesson) return fail(res, 400, 'Pick which lesson to change', 'invalid')
   }
   if (kind === 'reschedule' || kind === 'change') {
     toSlot = st.options.find((o) => o.id === Number(b.toSlotId))
@@ -97,20 +110,20 @@ async function createRequest(res, sql, s, b) {
     if (startsAt(b.toDate, toSlot.start) <= Date.now()) return fail(res, 400, 'Pick a time in the future', 'invalid')
     toDate = b.toDate
   }
-  if (kind === 'change' && st.requests.some((r) => r.kind === 'change' && r.status === 'pending')) {
+  if (kind === 'change' && st.requests.some((r) => r.kind === 'change' && r.status === 'pending' && sameLesson(r.from_lesson, fromLesson))) {
     return fail(res, 409, 'You already asked to change your regular time', 'duplicate')
   }
 
   const toLabel = toSlot ? (toDate ? `${dateLabel(toDate)} ${slotLabel(toSlot).split(' ').slice(1).join(' ')}` : slotLabel(toSlot)) : null
   const [row] = await sql`
-    INSERT INTO student_requests (student_id, kind, lesson_date, to_slot_id, to_date, to_label, recording, note)
-    VALUES (${s.id}, ${kind}, ${lessonDate}, ${toSlot?.id ?? null}, ${toDate}, ${toLabel}, ${kind === 'absence' && b.recording === true}, ${note || null})
+    INSERT INTO student_requests (student_id, kind, lesson_date, from_lesson, to_slot_id, to_date, to_label, recording, note)
+    VALUES (${s.id}, ${kind}, ${lessonDate}, ${fromLesson ? JSON.stringify(fromLesson) : null}::jsonb, ${toSlot?.id ?? null}, ${toDate}, ${toLabel}, ${kind === 'absence' && b.recording === true}, ${note || null})
     RETURNING id`
 
   const what = {
-    reschedule: `Move the lesson on ${dateLabel(lessonDate)} to ${toLabel}`,
-    absence: `Can't make the lesson on ${dateLabel(lessonDate)}${b.recording === true ? ' (would like the recording)' : ''}`,
-    change: `Change the regular time${st.slot ? ` from ${st.slot.label}` : ''} to ${toLabel}`,
+    reschedule: `Move the lesson on ${dateLabel(lessonDate)} ${fromLesson?.start || ''} to ${toLabel}`,
+    absence: `Can't make the lesson on ${dateLabel(lessonDate)} ${fromLesson?.start || ''}${b.recording === true ? ' (would like the recording)' : ''}`,
+    change: `Change the regular lesson${fromLesson ? ` on ${weeklyLabel(fromLesson)}` : ''} to ${toLabel}`,
   }[kind]
   await notify(`Kangyan: ${s.name} — ${kind === 'absence' ? 'absence' : kind === 'change' ? 'new regular time' : 'reschedule'} request`,
     `${s.name} (${s.level || ''}, ${s.lesson_type === 'group' ? 'group' : '1-to-1'})\n${what}${note ? `\nNote: ${note}` : ''}\n\nApprove or reject: https://kangyan.work/admin`)

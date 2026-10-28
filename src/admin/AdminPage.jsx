@@ -190,7 +190,10 @@ export default function AdminPage() {
     setOpenId(null)
     setPrefill({
       name: r.student_name, phone: r.phone || '', level: r.level, lessonType: r.lesson_type === 'group' ? 'group' : 'private',
-      subjects: r.subjects, slotId: r.preferred_slots.find((p) => p.live)?.id ?? '', lang: r.lang === 'zh' ? 'zh' : 'en', enquiryId: r.id,
+      subjects: r.subjects,
+      // Start from the times they picked; the form lets you change or add more.
+      lessons: r.preferred_slots.filter((p) => p.live).map((p) => ({ weekday: p.weekday, start: p.start, end: p.end })).slice(0, 3),
+      lang: r.lang === 'zh' ? 'zh' : 'en', enquiryId: r.id,
       notes: [r.school, r.location].filter(Boolean).join(' · '),
     })
     setTab('students')

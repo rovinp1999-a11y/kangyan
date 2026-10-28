@@ -5,17 +5,19 @@
 //   POST { action: 'resetPin', id }           → { pin }
 //   POST { action: 'delete', id }             → removes the student and their requests
 //   POST { action: 'decide', id, status, reply } → approve / reject a pending request
-// A 1-to-1 student's regular slot is marked taken, and freed again when nobody uses it.
+// A student has one or more weekly lessons ({ weekday, start, end }). When a 1-to-1
+// lesson matches a timetable slot, that slot is marked taken, and freed again when nobody uses it.
 import { getSql } from '../_db.js'
 import { requireAdmin } from '../_auth.js'
 import { allow, readBody, send, fail, isDbId } from '../_http.js'
 import { normalPhone, newPin, hashPin, checkPin } from '../_students.js'
 import { LEVELS, SUBJECTS, LESSON_TYPES } from '../../shared/constants.js'
+import { SLOT_COLUMNS } from '../slots.js'
 import { isDate } from '../../shared/lessons.js'
 
-const STUDENT_COLUMNS = `s.id, s.created_at, s.name, s.phone, s.level, s.lesson_type, s.subjects, s.slot_id,
+const STUDENT_COLUMNS = `s.id, s.created_at, s.name, s.phone, s.level, s.lesson_type, s.subjects, s.lessons,
   to_char(s.start_date, 'YYYY-MM-DD') AS start_date, s.active, s.enquiry_id, s.lang, s.notes, s.last_login`
-const REQUEST_COLUMNS = `r.id, r.created_at, r.student_id, r.kind, to_char(r.lesson_date, 'YYYY-MM-DD') AS lesson_date,
+const REQUEST_COLUMNS = `r.id, r.created_at, r.student_id, r.kind, to_char(r.lesson_date, 'YYYY-MM-DD') AS lesson_date, r.from_lesson,
   r.to_slot_id, to_char(r.to_date, 'YYYY-MM-DD') AS to_date, r.to_label, r.recording, r.note, r.status, r.reply, r.decided_at`
 const str = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '')
 
@@ -33,13 +35,35 @@ async function uniquePin(sql, phone, exceptId = 0) {
   }
 }
 
-/** Keep the timetable in step with 1-to-1 students' regular slots. */
-async function syncSlots(sql, lessonType, oldSlot, newSlot) {
-  if (lessonType !== 'private') return
-  if (newSlot) await sql`UPDATE availability_slots SET status = 'taken' WHERE id = ${newSlot}`
-  if (oldSlot && oldSlot !== newSlot) {
-    const [{ n }] = await sql`SELECT count(*)::int AS n FROM students WHERE slot_id = ${oldSlot} AND active AND lesson_type = 'private'`
-    if (!n) await sql`UPDATE availability_slots SET status = 'open' WHERE id = ${oldSlot}`
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/
+const slotIds = (st) => (st && st.active && st.lesson_type === 'private' ? (st.lessons || []).map((l) => l.slot_id).filter(Boolean) : [])
+
+/** Weekly lessons from the form, each linked to the timetable slot with the same day and times. */
+async function cleanLessons(sql, list) {
+  if (!Array.isArray(list)) return []
+  const slots = await sql.query(`SELECT ${SLOT_COLUMNS} FROM availability_slots`)
+  const out = []
+  for (const l of list.slice(0, 7)) {
+    const weekday = Number(l?.weekday)
+    if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6 || !HHMM.test(l.start) || !HHMM.test(l.end) || l.start >= l.end) return null
+    if (out.some((o) => o.weekday === weekday && o.start === l.start)) continue
+    const slot = slots.find((x) => x.weekday === weekday && x.start === l.start && x.end === l.end)
+    out.push({ weekday, start: l.start, end: l.end, slot_id: slot ? slot.id : null })
+  }
+  return out.sort((a, b) => a.weekday - b.weekday || a.start.localeCompare(b.start))
+}
+
+/** Keep the timetable in step with 1-to-1 students' weekly lessons. */
+async function syncSlots(sql, before, after) {
+  const was = slotIds(before)
+  const now = slotIds(after)
+  for (const id of now) if (!was.includes(id)) await sql`UPDATE availability_slots SET status = 'taken' WHERE id = ${id}`
+  for (const id of was) {
+    if (now.includes(id)) continue
+    const [{ n }] = await sql`
+      SELECT count(*)::int AS n FROM students
+      WHERE active AND lesson_type = 'private' AND lessons @> ${JSON.stringify([{ slot_id: id }])}::jsonb`
+    if (!n) await sql`UPDATE availability_slots SET status = 'open' WHERE id = ${id}`
   }
 }
 
@@ -52,7 +76,6 @@ function fields(b, partial) {
   if (has('level')) { out.level = LEVELS.includes(b.level) ? b.level : null }
   if (has('lessonType')) { if (!LESSON_TYPES.includes(b.lessonType)) return 'Choose 1-to-1 or group'; out.lesson_type = b.lessonType }
   if (has('subjects')) { out.subjects = Array.isArray(b.subjects) ? [...new Set(b.subjects.filter((x) => SUBJECTS.includes(x)))] : [] }
-  if (has('slotId')) { const n = Number(b.slotId); out.slot_id = b.slotId == null || b.slotId === '' ? null : isDbId(n) ? n : NaN; if (Number.isNaN(out.slot_id)) return 'Invalid slot' }
   if (has('startDate')) { out.start_date = b.startDate ? (isDate(b.startDate) ? b.startDate : NaN) : null; if (Number.isNaN(out.start_date)) return 'Invalid start date' }
   if (has('notes')) out.notes = str(b.notes, 2000) || null
   if (has('lang')) out.lang = b.lang === 'zh' ? 'zh' : 'en'
@@ -78,15 +101,18 @@ export default async function handler(req, res) {
     if (b.action === 'create') {
       const f = fields(b, false)
       if (typeof f === 'string') return fail(res, 400, f)
+      const lessons = await cleanLessons(sql, b.lessons)
+      if (!lessons) return fail(res, 400, 'Check the weekly lesson times')
       const enquiryId = isDbId(Number(b.enquiryId)) ? Number(b.enquiryId) : null
       const pin = await uniquePin(sql, f.phone)
       const [row] = await sql`
-        INSERT INTO students (name, phone, pin_hash, level, lesson_type, subjects, slot_id, start_date, enquiry_id, lang, notes)
-        VALUES (${f.name}, ${f.phone}, ${hashPin(pin)}, ${f.level}, ${f.lesson_type}, ${f.subjects}, ${f.slot_id}, ${f.start_date}, ${enquiryId}, ${f.lang}, ${f.notes})
+        INSERT INTO students (name, phone, pin_hash, level, lesson_type, subjects, lessons, start_date, enquiry_id, lang, notes)
+        VALUES (${f.name}, ${f.phone}, ${hashPin(pin)}, ${f.level}, ${f.lesson_type}, ${f.subjects}, ${JSON.stringify(lessons)}::jsonb, ${f.start_date}, ${enquiryId}, ${f.lang}, ${f.notes})
         RETURNING id`
-      await syncSlots(sql, f.lesson_type, null, f.slot_id)
+      const created = await getStudent(sql, row.id)
+      await syncSlots(sql, null, created)
       if (enquiryId) await sql`UPDATE enquiries SET status = 'confirmed' WHERE id = ${enquiryId}`
-      return send(res, 201, { ok: true, student: await getStudent(sql, row.id), pin })
+      return send(res, 201, { ok: true, student: created, pin })
     }
 
     if (!isDbId(id)) return fail(res, 400, 'Invalid id')
@@ -96,14 +122,17 @@ export default async function handler(req, res) {
       if (!before) return fail(res, 404, 'Student not found')
       const f = fields(b, true)
       if (typeof f === 'string') return fail(res, 400, f)
+      if ('lessons' in b) {
+        const lessons = await cleanLessons(sql, b.lessons)
+        if (!lessons) return fail(res, 400, 'Check the weekly lesson times')
+        f.lessons = JSON.stringify(lessons)
+      }
       const keys = Object.keys(f)
       if (!keys.length) return fail(res, 400, 'Nothing to update')
-      await sql.query(`UPDATE students SET ${keys.map((k, i) => `${k} = $${i + 2}`).join(', ')} WHERE id = $1`, [id, ...keys.map((k) => f[k])])
+      await sql.query(`UPDATE students SET ${keys.map((k, i) => `${k} = $${i + 2}${k === 'lessons' ? '::jsonb' : ''}`).join(', ')} WHERE id = $1`, [id, ...keys.map((k) => f[k])])
       const after = await getStudent(sql, id)
-      // Free or take slots when the slot, class type or active state changed.
-      const was = before.active && before.lesson_type === 'private' ? before.slot_id : null
-      const now = after.active && after.lesson_type === 'private' ? after.slot_id : null
-      if (was !== now) await syncSlots(sql, 'private', was, now)
+      // Free or take slots when the lessons, class type or active state changed.
+      await syncSlots(sql, before, after)
       return send(res, 200, { ok: true, student: after })
     }
 
@@ -119,7 +148,7 @@ export default async function handler(req, res) {
       const s = await getStudent(sql, id)
       if (!s) return fail(res, 404, 'Student not found')
       await sql`DELETE FROM students WHERE id = ${id}`
-      if (s.active) await syncSlots(sql, s.lesson_type, s.slot_id, null)
+      await syncSlots(sql, s, null)
       return send(res, 200, { ok: true, id })
     }
 
@@ -128,14 +157,21 @@ export default async function handler(req, res) {
       const reply = str(b.reply, 500) || null
       const [r] = await sql`
         UPDATE student_requests SET status = ${b.status}, reply = ${reply}, decided_at = now()
-        WHERE id = ${id} AND status = 'pending' RETURNING id, student_id, kind, to_slot_id`
+        WHERE id = ${id} AND status = 'pending' RETURNING id, student_id, kind, to_slot_id, from_lesson`
       if (!r) return fail(res, 409, 'This request was already answered or withdrawn')
       let student = null
       if (b.status === 'approved' && r.kind === 'change' && r.to_slot_id) {
+        // Swap the weekly lesson they asked about for the new slot (or add it if they had none).
         const before = await getStudent(sql, r.student_id)
-        await sql`UPDATE students SET slot_id = ${r.to_slot_id} WHERE id = ${r.student_id}`
-        if (before?.active) await syncSlots(sql, before.lesson_type, before.slot_id, r.to_slot_id)
-        student = await getStudent(sql, r.student_id)
+        const [to] = await sql.query(`SELECT ${SLOT_COLUMNS} FROM availability_slots WHERE id = $1`, [r.to_slot_id])
+        if (before && to) {
+          const keep = (before.lessons || []).filter((l) => !(r.from_lesson && l.weekday === r.from_lesson.weekday && l.start === r.from_lesson.start))
+          const lessons = [...keep, { weekday: to.weekday, start: to.start, end: to.end, slot_id: to.id }]
+            .sort((a, c) => a.weekday - c.weekday || a.start.localeCompare(c.start))
+          await sql`UPDATE students SET lessons = ${JSON.stringify(lessons)}::jsonb WHERE id = ${r.student_id}`
+          student = await getStudent(sql, r.student_id)
+          await syncSlots(sql, before, student)
+        }
       }
       const [request] = await sql.query(`SELECT ${REQUEST_COLUMNS} FROM student_requests r WHERE r.id = $1`, [id])
       return send(res, 200, { ok: true, request, student })

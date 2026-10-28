@@ -59,6 +59,7 @@ function Login({ T, onToken }) {
 /** Bottom sheet for one request: absence, reschedule (one lesson) or a new regular time. */
 function RequestSheet({ kind, lesson, st, T, L, lang, token, onClose, onSent }) {
   const [slotId, setSlotId] = useState(null)
+  const [from, setFrom] = useState(st.weekly.length === 1 ? st.weekly[0] : null) // which weekly lesson to change
   const [date, setDate] = useState(null)
   const [note, setNote] = useState('')
   const [recording, setRecording] = useState(false)
@@ -67,8 +68,8 @@ function RequestSheet({ kind, lesson, st, T, L, lang, token, onClose, onSent }) 
   const group = st.student.lessonType === 'group'
   const options = kind === 'reschedule' ? st.options.filter((o) => o.dates.length) : st.options
   const label = (o) => `${L.weekdays[o.weekday]} · ${shortRange(o.start, o.end, lang)}`
-  const ready = kind === 'absence' || (kind === 'change' && slotId) || (kind === 'reschedule' && slotId && date)
-  const d = lesson && dateLabel(lesson.date, lang)
+  const ready = kind === 'absence' || (kind === 'change' && slotId && (from || !st.weekly.length)) || (kind === 'reschedule' && slotId && date)
+  const d = lesson && `${dateLabel(lesson.date, lang)} ${shortRange(lesson.start, lesson.end, lang)}`
 
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose() }
@@ -84,7 +85,7 @@ function RequestSheet({ kind, lesson, st, T, L, lang, token, onClose, onSent }) 
     setBusy(true)
     setErr('')
     try {
-      await call(token, { action: 'request', kind, lessonDate: lesson?.date, toSlotId: slotId, toDate: date, recording, note })
+      await call(token, { action: 'request', kind, lessonDate: lesson?.date, lessonStart: lesson?.start, fromWeekday: from?.weekday, fromStart: from?.start, toSlotId: slotId, toDate: date, recording, note })
       onSent()
     } catch (e2) {
       setErr(T.errors[e2.code] || T.errors.server)
@@ -109,6 +110,18 @@ function RequestSheet({ kind, lesson, st, T, L, lang, token, onClose, onSent }) 
             <p className="stu-note">{T.sheet.absenceGroup}</p>
             <label className="stu-check"><input type="checkbox" checked={recording} onChange={(e) => setRecording(e.target.checked)} />{T.sheet.recording}</label>
           </>
+        )}
+
+        {kind === 'change' && st.weekly.length > 1 && (
+          <div className="stu-opts" role="radiogroup" aria-label={T.sheet.whichLesson}>
+            <span className="stu-k">{T.sheet.whichLesson}</span>
+            {st.weekly.map((w) => (
+              <div key={`${w.weekday}-${w.start}`} className={`stu-opt ${from === w ? 'is-on' : ''}`}>
+                <button type="button" role="radio" aria-checked={from === w} onClick={() => setFrom(w)}>{label(w)}</button>
+              </div>
+            ))}
+            <span className="stu-k">{T.sheet.newTime}</span>
+          </div>
         )}
 
         {kind !== 'absence' && (options.length ? (
@@ -269,9 +282,9 @@ export default function StudentPage() {
               <h1>{T.hi(st.student.name)}</h1>
               <div className="stu-card stu-regular">
                 <span className="stu-k">{T.regular}</span>
-                {st.slot ? (
+                {st.weekly.length ? (
                   <>
-                    <b>{T.every(L.weekdays[st.slot.weekday])} · {shortRange(st.slot.start, st.slot.end, lang)}</b>
+                    {st.weekly.map((w) => <b key={`${w.weekday}-${w.start}`}>{T.every(L.weekdays[w.weekday])} · {shortRange(w.start, w.end, lang)}</b>)}
                     <span className="stu-muted">
                       {[T.types[st.student.lessonType], st.student.level && (L.levels[st.student.level] || st.student.level), st.student.subjects.map((x) => L.subjects[x] || x).join(lang === 'zh' ? '、' : ', ')].filter(Boolean).join(' · ')}
                     </span>
@@ -287,7 +300,7 @@ export default function StudentPage() {
                   {st.lessons.map((l) => {
                     const late = l.hours < st.noticeHours
                     return (
-                      <li key={l.date} className={`stu-lesson ${l.request ? `is-${l.request.kind}` : ''}`}>
+                      <li key={`${l.date}-${l.start}`} className={`stu-lesson ${l.request ? `is-${l.request.kind}` : ''}`}>
                         <div className="stu-lesson__when">
                           <b>{dateLabel(l.date, lang)}</b>
                           <span>{shortRange(l.start, l.end, lang)}</span>
@@ -305,7 +318,7 @@ export default function StudentPage() {
                     )
                   })}
                 </ul>
-              ) : <p className="stu-muted">{st.slot ? T.noLessons : T.noSlot}</p>}
+              ) : <p className="stu-muted">{st.weekly.length ? T.noLessons : T.noSlot}</p>}
             </section>
 
             <section className="stu-card stu-change">
@@ -327,7 +340,8 @@ export default function StudentPage() {
                         <span className={`stu-chip stu-chip--${r.status}`}>{T.reqStatus[r.status]}</span>
                       </div>
                       <p>
-                        {r.lesson_date && T.lessonOn(dateLabel(r.lesson_date, lang))}
+                        {r.lesson_date && T.lessonOn(`${dateLabel(r.lesson_date, lang)}${r.from_lesson ? ` ${shortRange(r.from_lesson.start, r.from_lesson.end, lang)}` : ''}`)}
+                        {!r.lesson_date && r.from_lesson && `${L.weekdays[r.from_lesson.weekday]} ${shortRange(r.from_lesson.start, r.from_lesson.end, lang)}`}
                         {r.to_slot_id && <> {T.to(timeOf(r.to_slot_id, r.to_date) || r.to_label)}</>}
                         {r.recording && <> · {T.recordingAsked}</>}
                       </p>

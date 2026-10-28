@@ -98,6 +98,12 @@ const statements = [
      decided_at  TIMESTAMPTZ
    )`,
   `CREATE INDEX IF NOT EXISTS student_requests_student_idx ON student_requests (student_id, created_at DESC)`,
+  // a student can have several weekly lessons: [{ weekday, start, end, slot_id }]
+  `ALTER TABLE students ADD COLUMN IF NOT EXISTS lessons JSONB NOT NULL DEFAULT '[]'::jsonb`,
+  `UPDATE students s SET lessons = jsonb_build_array(jsonb_build_object('weekday', a.weekday, 'start', to_char(a.start_time, 'HH24:MI'), 'end', to_char(a.end_time, 'HH24:MI'), 'slot_id', a.id))
+     FROM availability_slots a WHERE a.id = s.slot_id AND s.lessons = '[]'::jsonb`,
+  // which weekly lesson a request is about: { weekday, start, end }
+  `ALTER TABLE student_requests ADD COLUMN IF NOT EXISTS from_lesson JSONB`,
 ]
 for (const s of statements) await sql.query(s)
 

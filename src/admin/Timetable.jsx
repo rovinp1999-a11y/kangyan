@@ -237,8 +237,8 @@ export function SlotsTab({ slots, setSlots, enquiries, students = [], onAuthErro
                             </button>
                           </div>
                         )}
-                        {students.some((x) => x.active && x.slot_id === s.id) && (
-                          <p className="adm-slot__regular"><Icon name="users" />Regular: {students.filter((x) => x.active && x.slot_id === s.id).map((x) => x.name).join(', ')}</p>
+                        {students.some((x) => x.active && (x.lessons || []).some((l) => l.slot_id === s.id)) && (
+                          <p className="adm-slot__regular"><Icon name="users" />Regular: {students.filter((x) => x.active && (x.lessons || []).some((l) => l.slot_id === s.id)).map((x) => x.name).join(', ')}</p>
                         )}
                         {interest[s.id] && (
                           <div className="adm-slot__people">
