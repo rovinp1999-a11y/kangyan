@@ -74,6 +74,8 @@ export function draftMessage(r) {
   const subjects = r.subjects.map((x) => (zh ? L.subjects[x] : x) || x).join(zh ? '、' : ', ')
   const slots = (r.preferred_slots || []).map((x) =>
     x.weekday != null && x.start && x.end ? `${L.weekdaysShort[x.weekday]} ${shortRange(x.start, x.end, zh ? 'zh' : 'en')}` : x.label)
+  // In-person enquiries suggest their own times.
+  slots.push(...(r.custom_times || []).map((x) => `${L.weekdaysShort[x.weekday]} ${shortRange(x.start, x.end, zh ? 'zh' : 'en')}`))
   const times = slots.length ? slots.join(zh ? '、' : ', ') : zh ? '时间都可以' : 'Flexible'
   const type = zh ? (r.lesson_type === 'group' ? '小组课' : '一对一私人课') : LESSON_TYPE_LABEL[r.lesson_type] || LESSON_TYPE_LABEL.private
   const fmt = L.formats[r.format] || L.formats.either
@@ -135,7 +137,7 @@ export function downloadCsv(rows) {
     ['School', (r) => r.school],
     ['Class', (r) => LESSON_TYPE_LABEL[typeOf(r)]],
     ['Subjects', (r) => r.subjects.join(', ')],
-    ['Preferred times', (r) => r.preferred_slots.map((p) => p.label).join(', ') || 'Flexible'],
+    ['Preferred times', (r) => [...r.preferred_slots.map((p) => p.label), ...(r.custom_labels || [])].join(', ') || 'Flexible'],
     ['Lessons', (r) => FORMAT_LABEL[r.format] || r.format],
     ['Location', (r) => r.location],
     ['WhatsApp', (r) => r.phone],
@@ -183,7 +185,9 @@ export const ICONS = {
   list: 'M8 6h13 M8 12h13 M8 18h13 M3 6h.01 M3 12h.01 M3 18h.01',
   clock: 'M12 22a10 10 0 100-20 10 10 0 000 20z M12 6v6l4 2',
   chart: 'M3 3v18h18 M7 15v2 M11 11v6 M15 7v10 M19 12v5',
+  users: 'M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2 M9 11a4 4 0 100-8 4 4 0 000 8z M22 21v-2a4 4 0 00-3-3.87 M16 3.13a4 4 0 010 7.75',
   grid: 'M3 3h18v18H3z M3 9h18 M3 15h18 M9 3v18 M15 3v18',
+  group: 'M9 11a4 4 0 100-8 4 4 0 000 8z M2 21v-1a6 6 0 016-6h2a6 6 0 016 6v1 M17 3.5a4 4 0 010 7.5 M22 21v-1a6 6 0 00-4-5.6',
 }
 
 export function Icon({ name, className = '' }) {

@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { slotLabel } from '../../shared/constants.js'
+import { WEEKDAYS_SHORT, formatRange, slotLabel } from '../../shared/constants.js'
 import { Icon, STATUS_META, api, getToken, setToken, sortSlots } from './lib.jsx'
 import { EnquiriesTab, EnquiryCard, Drawer } from './Enquiries.jsx'
 import { SlotsTab } from './Timetable.jsx'
 import { Overview } from './Overview.jsx'
 import { Schedule } from './Schedule.jsx'
+import { StudentsTab } from './Students.jsx'
 
 const TABS = [
   { key: 'overview', label: 'Overview', icon: 'chart' },
   { key: 'enquiries', label: 'Enquiries', icon: 'inbox' },
+  { key: 'students', label: 'Students', icon: 'users' },
   { key: 'schedule', label: 'Schedule', icon: 'grid' },
   { key: 'slots', label: 'Timetable', icon: 'calendar' },
 ]
@@ -67,6 +69,9 @@ export default function AdminPage() {
   const [enqFilter, setEnqFilter] = useState('all')
   const [enquiries, setEnquiries] = useState(null)
   const [slots, setSlots] = useState(null)
+  const [students, setStudents] = useState(null)
+  const [requests, setRequests] = useState(null)
+  const [prefill, setPrefill] = useState(null)
   const [loadErr, setLoadErr] = useState('')
   const [spinning, setSpinning] = useState(false)
   const [toast, setToast] = useState(null)
@@ -104,16 +109,21 @@ export default function AdminPage() {
     setAuthed(false)
     setEnquiries(null)
     setSlots(null)
+    setStudents(null)
+    setRequests(null)
   }, [])
 
   const load = useCallback(async () => {
     setLoadErr('')
     try {
-      const [e, s] = await Promise.all([
+      const [e, s, st] = await Promise.all([
         api('/api/admin/enquiries'),
         fetch('/api/slots').then((r) => r.json()),
+        api('/api/admin/students'),
       ])
       setEnquiries(e.enquiries)
+      setStudents(st.students)
+      setRequests(st.requests)
       if (!s.ok) throw new Error(s.error || 'Could not load the timetable')
       setSlots(sortSlots(s.slots))
       return true
@@ -143,6 +153,9 @@ export default function AdminPage() {
         const cur = byId.get(p.id)
         return cur ? { ...p, weekday: cur.weekday, start: cur.start, end: cur.end, label: slotLabel(cur), live: true } : { ...p, live: false }
       }).sort((a, b) => (a.weekday ?? 9) - (b.weekday ?? 9) || (a.start || '').localeCompare(b.start || '')),
+      // In-person enquiries suggest their own times instead of picking slots.
+      custom_times: r.custom_times || [],
+      custom_labels: (r.custom_times || []).map((x) => `${WEEKDAYS_SHORT[x.weekday]} ${formatRange(x.start, x.end)}`),
     }))
   }, [enquiries, slots])
 
@@ -167,17 +180,34 @@ export default function AdminPage() {
     notes: (id, notes) => patchEnquiry(id, { admin_notes: notes }, { notes }, notes ? 'Note saved' : 'Note removed'),
   }), [patchEnquiry])
   const closeDrawer = useCallback(() => setOpenId(null), [])
+  // Slots change status when a 1-to-1 student is added, moved or removed.
+  const refreshSlots = useCallback(async () => {
+    try { const s = await fetch('/api/slots').then((r) => r.json()); if (s.ok) setSlots(sortSlots(s.slots)) } catch { /* keep the old list */ }
+  }, [])
+  const clearPrefill = useCallback(() => setPrefill(null), [])
+  // From an enquiry: open the add-student form already filled in.
+  const makeStudent = useCallback((r) => {
+    setOpenId(null)
+    setPrefill({
+      name: r.student_name, phone: r.phone || '', level: r.level, lessonType: r.lesson_type === 'group' ? 'group' : 'private',
+      subjects: r.subjects, slotId: r.preferred_slots.find((p) => p.live)?.id ?? '', lang: r.lang === 'zh' ? 'zh' : 'en', enquiryId: r.id,
+      notes: [r.school, r.location].filter(Boolean).join(' · '),
+    })
+    setTab('students')
+  }, [setTab])
   const opened = rows && openId != null ? rows.find((r) => r.id === openId) : null
 
   const newCount = enquiries ? enquiries.filter((r) => r.status === 'new').length : 0
   const weekAgo = Date.now() - 7 * 864e5
   const weekCount = enquiries ? enquiries.filter((r) => new Date(r.created_at).getTime() > weekAgo).length : 0
   const openSlots = slots ? slots.filter((s) => s.status === 'open').length : 0
-  const ready = enquiries && slots
+  const ready = enquiries && slots && students && requests
+  const pendingCount = requests ? requests.filter((r) => r.status === 'pending').length : 0
   const today = new Date().toLocaleDateString('en-MY', { weekday: 'long', day: 'numeric', month: 'long' })
   const HEAD = {
     overview: ['Overview', `${today} · ${newCount} waiting for a reply`],
     enquiries: ['Enquiries', `${newCount} new · ${weekCount} in the last 7 days · ${enquiries?.length ?? 0} total`],
+    students: ['Students', `${students?.filter((s) => s.active).length ?? 0} active · ${pendingCount} request${pendingCount === 1 ? '' : 's'} waiting · login page: kangyan.work/student`],
     schedule: ['Schedule', 'Who picked which time, like a spreadsheet. Tap a name to open the enquiry.'],
     slots: ['Timetable', `${openSlots} open slot${openSlots === 1 ? '' : 's'} across the week`],
   }
@@ -195,6 +225,7 @@ export default function AdminPage() {
               <button key={t.key} type="button" className={tab === t.key ? 'is-on' : ''} aria-current={tab === t.key ? 'page' : undefined} onClick={() => go(t.key)}>
                 <Icon name={t.icon} /><span>{t.label}</span>
                 {t.key === 'enquiries' && newCount > 0 && <span className="badge" aria-label={`${newCount} new`}>{newCount}</span>}
+                {t.key === 'students' && pendingCount > 0 && <span className="badge" aria-label={`${pendingCount} requests waiting`}>{pendingCount}</span>}
               </button>
             ))}
           </nav>
@@ -232,16 +263,17 @@ export default function AdminPage() {
               <p>{HEAD[tab][1]}</p>
             </div>
             {tab === 'overview' && <Overview rows={rows} slots={slots} onOpen={setOpenId} go={go} />}
-            {tab === 'enquiries' && <EnquiriesTab rows={rows} actions={actions} onOpen={setOpenId} notify={notify} filter={enqFilter} setFilter={setEnqFilter} />}
+            {tab === 'enquiries' && <EnquiriesTab rows={rows} actions={actions} onOpen={setOpenId} onMakeStudent={makeStudent} notify={notify} filter={enqFilter} setFilter={setEnqFilter} />}
+            {tab === 'students' && <StudentsTab students={students} setStudents={setStudents} requests={requests} setRequests={setRequests} slots={slots} refreshSlots={refreshSlots} prefill={prefill} clearPrefill={clearPrefill} notify={notify} onAuthError={logout} />}
             {tab === 'schedule' && <Schedule rows={rows} slots={slots} onOpen={setOpenId} notify={notify} />}
-            {tab === 'slots' && <SlotsTab slots={slots} setSlots={setSlots} enquiries={rows} onAuthError={logout} notify={notify} onOpen={setOpenId} />}
+            {tab === 'slots' && <SlotsTab slots={slots} setSlots={setSlots} enquiries={rows} students={students} onAuthError={logout} notify={notify} onOpen={setOpenId} />}
           </>
         )}
       </main>
 
       {opened && (
         <Drawer onClose={closeDrawer} label={`Enquiry from ${opened.student_name}`}>
-          <EnquiryCard r={opened} onStatus={actions.status} onNotes={actions.notes} notify={notify} />
+          <EnquiryCard r={opened} onStatus={actions.status} onNotes={actions.notes} onMakeStudent={makeStudent} notify={notify} />
         </Drawer>
       )}
 

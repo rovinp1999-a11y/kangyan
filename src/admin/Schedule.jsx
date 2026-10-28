@@ -1,11 +1,138 @@
 // Excel-style views of who picked which time: a week grid (days × times) and a
 // student × slot matrix, so overlaps are visible at a glance.
 import { useMemo, useState } from 'react'
-import { WEEKDAYS, WEEKDAYS_SHORT, formatRange, slotLabel } from '../../shared/constants.js'
-import { Icon, KIND_SHORT, sortSlots, typeOf, useStored } from './lib.jsx'
+import { WEEKDAYS_SHORT, SUBJECTS, formatRange, slotLabel, feeStage } from '../../shared/constants.js'
+import { Icon, KIND_SHORT, STATUS_META, sortSlots, typeOf, useStored } from './lib.jsx'
 import { heat } from './charts.jsx'
 
-const MODES = [['grid', 'Week grid', 'grid'], ['matrix', 'Student list', 'list']]
+const MODES = [['same', 'Same time', 'group'], ['grid', 'Week grid', 'grid'], ['matrix', 'Student list', 'list']]
+const STAGES = [
+  ['junior', 'Junior', 'Form 1–3 · Junior 1–3 · Year 7–9'],
+  ['senior', 'Senior', 'Form 4–6 · Senior 1–3 · Year 10–11'],
+  ['other', 'Other level', ''],
+]
+
+/**
+ * For every slot two or more students picked: who they are, split into junior and
+ * senior (a group class needs students at a similar stage), and the subjects they share.
+ */
+export function sameTimeGroups(slots, picks) {
+  return sortSlots(slots)
+    .filter((s) => (picks.get(s.id) || []).length >= 2)
+    .map((s) => {
+      const list = picks.get(s.id)
+      const stages = STAGES.map(([key, label, levels]) => {
+        const people = list.filter((r) => (feeStage(r.level) || 'other') === key)
+        const shared = SUBJECTS
+          .map((x) => [x, people.filter((r) => r.subjects.includes(x)).length])
+          .filter(([, n]) => n >= 2)
+          .sort((a, b) => b[1] - a[1])
+        return { key, label, levels, people, shared }
+      }).filter((g) => g.people.length)
+      const best = Math.max(...stages.map((g) => g.people.length))
+      return { slot: s, list, stages, best }
+    })
+    .sort((a, b) => b.best - a.best || b.list.length - a.list.length)
+}
+
+/** In-person enquiries with the times they suggested themselves (usually passed to another tutor). */
+function InPerson({ people, onOpen }) {
+  if (!people.length) return null
+  return (
+    <section className="same-card same-card--own">
+      <header className="same-card__head">
+        <div>
+          <h3>In person · own times</h3>
+          <p className="same-card__sub">They chose their own times instead of your slots.</p>
+        </div>
+        <span className="same-card__n"><b>{people.length}</b> students</span>
+      </header>
+      <ul className="same-people">
+        {people.map((r) => (
+          <li key={r.id}>
+            <button type="button" onClick={() => onOpen(r.id)}>
+              <span className="dot" style={{ '--c': STATUS_META[r.status].color }} aria-label={STATUS_META[r.status].label} />
+              <b>{r.student_name}</b>
+              <span className="same-people__lvl">{r.level}</span>
+              <span className={`want want--${typeOf(r)}`}>{KIND_SHORT[typeOf(r)]}</span>
+              <span className="same-people__subj">{r.custom_labels.join(' · ')}{r.location ? ` — ${r.location}` : ''}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+function SameTime({ groups, inPerson, onOpen }) {
+  if (!groups.length && !inPerson.length) {
+    return (
+      <div className="adm-empty">
+        <strong>No shared times yet</strong>
+        When two or more students pick the same time, they will show up here so you can see who could share a group class.
+      </div>
+    )
+  }
+  return (
+    <div className="same">
+      {!groups.length && (
+        <div className="adm-empty">
+          <strong>No shared times yet</strong>
+          When two or more students pick the same slot, they will show up here.
+        </div>
+      )}
+      {groups.map(({ slot: s, list, stages }) => (
+        <section className={`same-card ${s.status === 'open' ? '' : 'is-taken'}`} key={s.id}>
+          <header className="same-card__head">
+            <div>
+              <h3>{slotLabel(s)}</h3>
+              <p>
+                <span className="bt-kind">{KIND_SHORT[s.kind]}</span>
+                {s.status !== 'open' && <span className="bt-taken">Taken</span>}
+              </p>
+            </div>
+            <span className="same-card__n"><b>{list.length}</b> students</span>
+          </header>
+          {stages.map((g) => {
+            const wantGroup = g.people.filter((r) => typeOf(r) === 'group').length
+            return (
+              <div className={`same-stage ${g.people.length >= 2 ? 'is-match' : ''}`} key={g.key}>
+                <div className="same-stage__head">
+                  <b>{g.label} · {g.people.length}</b>
+                  {g.levels && <small>{g.levels}</small>}
+                </div>
+                {g.people.length >= 2 && (
+                  <p className="same-stage__idea">
+                    <Icon name="group" />
+                    <span>
+                      Could be a group of {g.people.length}
+                      {g.shared.length > 0 && <> · shared: {g.shared.map(([x, n]) => `${x} (${n})`).join(', ')}</>}
+                      {wantGroup < g.people.length && <> · {g.people.length - wantGroup} asked for 1-to-1</>}
+                    </span>
+                  </p>
+                )}
+                <ul className="same-people">
+                  {g.people.map((r) => (
+                    <li key={r.id}>
+                      <button type="button" onClick={() => onOpen(r.id)}>
+                        <span className="dot" style={{ '--c': STATUS_META[r.status].color }} aria-label={STATUS_META[r.status].label} />
+                        <b>{r.student_name}</b>
+                        <span className="same-people__lvl">{r.level}</span>
+                        <span className={`want want--${typeOf(r)}`}>{KIND_SHORT[typeOf(r)]}</span>
+                        <span className="same-people__subj">{r.subjects.join(', ')}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )
+          })}
+        </section>
+      ))}
+      <InPerson people={inPerson} onOpen={onOpen} />
+    </div>
+  )
+}
 
 function NameChip({ r, onOpen }) {
   return (
@@ -70,7 +197,7 @@ function WeekGrid({ slots, picks, onOpen }) {
 function Matrix({ people, slots, picks, onOpen }) {
   const [hl, setHl] = useState(null)
   const cols = sortSlots(slots.filter((s) => picks.has(s.id)))
-  const flexible = people.filter((r) => !r.preferred_slots.some((p) => p.live))
+  const flexible = people.filter((r) => !r.preferred_slots.some((p) => p.live) && !r.custom_times.length)
   if (!people.length) return null
   return (
     <>
@@ -105,7 +232,9 @@ function Matrix({ people, slots, picks, onOpen }) {
                       {ids.has(s.id) && <span className={`mk mk--${t}`} role="img" aria-label={`${r.student_name} picked ${slotLabel(s)}`}><Icon name="check" /></span>}
                     </td>
                   ))}
-                  <td>{!ids.size && <span className="mk mk--flex" role="img" aria-label="Flexible on time"><Icon name="check" /></span>}</td>
+                  <td>{!ids.size && (r.custom_times.length
+                    ? <span className="mk-own" title={r.custom_labels.join(', ')}>Own times</span>
+                    : <span className="mk mk--flex" role="img" aria-label="Flexible on time"><Icon name="check" /></span>)}</td>
                 </tr>
               )
             })}
@@ -129,9 +258,9 @@ function downloadMatrix(people, slots, picks) {
   const head = ['Student', 'Level', 'Class', 'Status', ...cols.map(slotLabel), 'Flexible']
   const lines = people.map((r) => {
     const ids = new Set(r.preferred_slots.filter((p) => p.live).map((p) => p.id))
-    return [r.student_name, r.level, KIND_SHORT[typeOf(r)], r.status, ...cols.map((s) => (ids.has(s.id) ? 'Yes' : '')), ids.size ? '' : 'Yes']
+    return [r.student_name, r.level, KIND_SHORT[typeOf(r)], r.status, ...cols.map((s) => (ids.has(s.id) ? 'Yes' : '')), ids.size ? '' : r.custom_labels.length ? `Own times: ${r.custom_labels.join(', ')}` : 'Yes']
   })
-  lines.push(['Total', '', '', '', ...cols.map((s) => picks.get(s.id).length), people.filter((r) => !r.preferred_slots.some((p) => p.live)).length])
+  lines.push(['Total', '', '', '', ...cols.map((s) => picks.get(s.id).length), people.filter((r) => !r.preferred_slots.some((p) => p.live) && !r.custom_times.length).length])
   const csv = [head, ...lines].map((l) => l.map(cell).join(',')).join('\r\n')
   const url = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }))
   const a = Object.assign(document.createElement('a'), { href: url, download: `kangyan-schedule-${new Date().toISOString().slice(0, 10)}.csv` })
@@ -140,7 +269,8 @@ function downloadMatrix(people, slots, picks) {
 }
 
 export function Schedule({ rows, slots, onOpen, notify }) {
-  const [mode, setMode] = useStored('kangyan-admin-schedule', 'grid')
+  const [stored, setMode] = useStored('kangyan-admin-schedule', 'same')
+  const mode = MODES.some(([k]) => k === stored) ? stored : 'same'
   const [kind, setKind] = useState('all')
   const [withClosed, setWithClosed] = useState(false)
 
@@ -160,6 +290,7 @@ export function Schedule({ rows, slots, onOpen, notify }) {
   }, [rows, kind, withClosed])
 
   const sorted = sortSlots(slots)
+  const groups = useMemo(() => sameTimeGroups(slots, picks), [slots, picks])
   const busiest = [...picks.entries()].sort((a, b) => b[1].length - a[1].length)[0]
   const busiestSlot = busiest && slots.find((s) => s.id === busiest[0])
 
@@ -192,6 +323,7 @@ export function Schedule({ rows, slots, onOpen, notify }) {
       <p className="adm-showing">
         {people.length} student{people.length === 1 ? '' : 's'} · {picks.size} of {slots.length} slots picked
         {busiestSlot && ` · busiest: ${slotLabel(busiestSlot)} (${busiest[1].length})`}
+        {groups.length > 0 && ` · ${groups.length} time${groups.length === 1 ? '' : 's'} picked by 2 or more`}
       </p>
 
       {!people.length ? (
@@ -199,6 +331,8 @@ export function Schedule({ rows, slots, onOpen, notify }) {
           <strong>No enquiries to show</strong>
           {rows.length ? 'Try including closed enquiries or another class type.' : 'When students pick times, you will see them here.'}
         </div>
+      ) : mode === 'same' ? (
+        <SameTime groups={groups} inPerson={people.filter((r) => r.custom_times.length)} onOpen={onOpen} />
       ) : mode === 'matrix' ? (
         <Matrix people={people} slots={sorted} picks={picks} onOpen={onOpen} />
       ) : (

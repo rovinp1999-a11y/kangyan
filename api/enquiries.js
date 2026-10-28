@@ -31,6 +31,16 @@ export default async function handler(req, res) {
     ? [...new Set(b.preferredSlots.map(Number).filter(isDbId))].slice(0, 50)
     : []
 
+  // In-person enquiries paint their own times (whole/half hours, 8 AM–10 PM, at least 1 hour).
+  const HHMM = /^([01]\d|2[0-3]):[03]0$/
+  const customTimes = format === 'in-person' && Array.isArray(b.customTimes)
+    ? b.customTimes
+      .filter((x) => x && Number.isInteger(x.weekday) && x.weekday >= 0 && x.weekday <= 6 && HHMM.test(x.start) && HHMM.test(x.end)
+        && x.start >= '08:00' && x.end <= '22:00' && x.end > x.start)
+      .map((x) => ({ weekday: x.weekday, start: x.start, end: x.end }))
+      .slice(0, 12)
+    : []
+
   const phoneDigits = phone.replace(/\D/g, '')
   // Checked in wizard order, so the client can send the student to the first problem.
   if (enquirer !== null && !ENQUIRERS.includes(enquirer)) return fail(res, 400, 'Please say who is filling this in', 'enquirer')
@@ -50,7 +60,7 @@ export default async function handler(req, res) {
     // Snapshot the chosen slots' labels so the enquiry stays readable even if
     // the availability is edited later.
     let preferred = []
-    if (slotIds.length) {
+    if (slotIds.length && format !== 'in-person') {
       const rows = await sql`
         SELECT id, weekday, to_char(start_time,'HH24:MI') AS start, to_char(end_time,'HH24:MI') AS "end"
         FROM availability_slots WHERE id = ANY(${slotIds}) AND kind IN (${lessonType}, 'both') AND status = 'open'
@@ -59,8 +69,8 @@ export default async function handler(req, res) {
     }
 
     const [row] = await sql`
-      INSERT INTO enquiries (student_name, email, phone, level, subjects, format, lesson_type, location, school, lang, enquirer, message, preferred_slots)
-      VALUES (${name}, ${email || null}, ${phone || null}, ${level}, ${subjects}, ${format}, ${lessonType}, ${format === 'online' ? null : location || null}, ${school || null}, ${lang}, ${enquirer}, ${message || null}, ${JSON.stringify(preferred)}::jsonb)
+      INSERT INTO enquiries (student_name, email, phone, level, subjects, format, lesson_type, location, school, lang, enquirer, message, preferred_slots, custom_times)
+      VALUES (${name}, ${email || null}, ${phone || null}, ${level}, ${subjects}, ${format}, ${lessonType}, ${format === 'online' ? null : location || null}, ${school || null}, ${lang}, ${enquirer}, ${message || null}, ${JSON.stringify(preferred)}::jsonb, ${JSON.stringify(customTimes)}::jsonb)
       RETURNING id`
     return send(res, 201, { ok: true, id: row.id })
   } catch (err) {

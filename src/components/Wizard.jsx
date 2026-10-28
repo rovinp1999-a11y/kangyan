@@ -4,17 +4,20 @@ import { useLang, shortRange } from '../i18n.jsx'
 import { confettiBurst } from '../confetti.js'
 import { subjectTiles } from '../data.js'
 import SchoolPicker from './SchoolPicker.jsx'
+import TimeFiller, { DAY_START, DAY_END } from './TimeFiller.jsx'
 
 // One-question-at-a-time enquiry flow:
-// parent or student → name → level → private/group (priced for that level) → school → subjects → times (filtered by class type)
-// → online/in person → contact + note → done.
-const STEPS = ['who', 'name', 'level', 'type', 'school', 'subjects', 'times', 'format', 'contact']
+// parent or student → name → level → private/group (priced for that level) → school → subjects
+// → online/in person → times → contact + note → done.
+// Times depend on the lesson mode: online picks from the timetable (filtered by class type);
+// in person lets the student fill in their own times, since those lessons are arranged separately.
+const STEPS = ['who', 'name', 'level', 'type', 'school', 'subjects', 'format', 'times', 'contact']
 const at = (id) => STEPS.indexOf(id)
 const DRAFT_KEY = 'kangyan-enquiry-draft'
 const EMAIL_RE = /^[^\s@?&=]+@[^\s@?&=]+\.[^\s@?&=]+$/ // same rule as the server
 // Server error code → wizard step to send the student back to.
 const CODE_STEP = { enquirer: 'who', name: 'name', lessonType: 'type', level: 'level', school: 'school', subjects: 'subjects', format: 'format', location: 'format', phone: 'contact', email: 'contact', contact: 'contact' }
-const EMPTY = { enquirer: '', name: '', lessonType: '', level: '', school: '', subjects: [], slots: [], format: '', location: '', phone: '', email: '', message: '', website: '' }
+const EMPTY = { enquirer: '', name: '', lessonType: '', level: '', school: '', subjects: [], slots: [], customTimes: [], format: '', location: '', phone: '', email: '', message: '', website: '' }
 
 const loadDraft = () => {
   try {
@@ -32,6 +35,7 @@ const loadDraft = () => {
         school: s(r.school, 160),
         subjects: Array.isArray(r.subjects) ? r.subjects.filter((x) => SUBJECTS.includes(x)) : [],
         slots: Array.isArray(r.slots) ? r.slots.filter((x) => Number.isInteger(x)) : [],
+        customTimes: Array.isArray(r.customTimes) ? r.customTimes.filter(okCustom).slice(0, 12) : [],
         format: ['online', 'in-person', 'either'].includes(r.format) ? r.format : '',
         location: s(r.location, 200),
         phone: s(r.phone, 30),
@@ -44,6 +48,10 @@ const loadDraft = () => {
   } catch { /* ignore */ }
   return { step: 0, data: EMPTY }
 }
+
+const HHMM = /^([01]\d|2[0-3]):[03]0$/
+const okCustom = (x) => x && Number.isInteger(x.weekday) && x.weekday >= 0 && x.weekday <= 6 && HHMM.test(x.start) && HHMM.test(x.end)
+  && x.start < x.end && x.start >= `${String(DAY_START).padStart(2, '0')}:00` && x.end <= `${DAY_END}:00`
 
 const firstName = (n) => n.trim().split(/\s+/)[0] || n.trim()
 
@@ -184,6 +192,7 @@ export default function Wizard() {
     setData((d) => ({ ...d, lessonType: 'private', slots: [] }))
   }
 
+  const inPerson = data.format === 'in-person'
   const submit = async () => {
     const phone = data.phone.trim()
     const email = data.email.trim()
@@ -201,10 +210,11 @@ export default function Wizard() {
         body: JSON.stringify({
           name: data.name, email, phone, level: data.level, school: data.school.trim(), subjects: data.subjects,
           format: data.format || 'either', lessonType: data.lessonType, message: data.message,
+          customTimes: inPerson ? data.customTimes : [],
           location: data.format === 'online' ? '' : data.location.trim(),
           lang,
           enquirer: data.enquirer,
-          preferredSlots: pickedSlots.map((s) => s.id), website: data.website,
+          preferredSlots: inPerson ? [] : pickedSlots.map((s) => s.id), website: data.website,
         }),
       })
       const json = await res.json().catch(() => ({}))
@@ -378,7 +388,14 @@ export default function Wizard() {
       )
       break
     case 'times':
-      body = (
+      body = inPerson ? (
+        <>
+          <h2 tabIndex={-1}>{w.times.custom.q}</h2>
+          <p className="wz__note wz__note--top">{w.times.custom.limited}</p>
+          <p className="wz__help">{w.times.custom.help}</p>
+          <TimeFiller value={data.customTimes} onChange={(v) => set('customTimes', v)} t={w.times.custom} L={L} lang={lang} />
+        </>
+      ) : (
         <>
           <h2 tabIndex={-1}>{w.times.q}</h2>
           <p className="wz__help">{w.times.help[data.lessonType] || w.times.help.private}</p>
@@ -431,7 +448,6 @@ export default function Wizard() {
       body = (
         <>
           <h2 tabIndex={-1}>{w.format.q}</h2>
-          {data.lessonType === 'private' && <p className="wz__help">{w.format.privateHelp}</p>}
           <div className="wz__cards wz__cards--3">
             {['online', 'in-person', 'either'].map((k) => (
               <button type="button" key={k} className={`wz__card ${data.format === k ? 'is-on' : ''}`} aria-pressed={data.format === k} onClick={() => chooseFormat(k)}>
@@ -440,6 +456,7 @@ export default function Wizard() {
               </button>
             ))}
           </div>
+          {data.format === 'in-person' && <p className="wz__note">{w.times.custom.limited}</p>}
           {(data.format === 'in-person' || data.format === 'either') && (
             <label className="wz__field wz__loc">
               <span>
@@ -469,8 +486,8 @@ export default function Wizard() {
         { label: typeLabel, to: at('type') },
         { label: data.school.trim(), to: at('school') },
         { label: data.subjects.map((s) => L.subjects[s]).join(' · '), to: at('subjects') },
-        { label: pickedSlots.length ? w.times.picked(pickedSlots.length) : w.contact.flexible, to: at('times') },
         { label: (L.formats[data.format] || L.formats.either) + (data.format !== 'online' && data.location.trim() ? ` · ${data.location.trim()}` : ''), to: at('format') },
+        { label: (inPerson ? data.customTimes.length : pickedSlots.length) ? w.times.picked(inPerson ? data.customTimes.length : pickedSlots.length) : w.contact.flexible, to: at('times') },
       ]
       body = (
         <>

@@ -61,6 +61,43 @@ const statements = [
   `ALTER TABLE enquiries ADD COLUMN IF NOT EXISTS school TEXT`,
   // private notes the tutor keeps on each enquiry
   `ALTER TABLE enquiries ADD COLUMN IF NOT EXISTS admin_notes TEXT`,
+  // in-person enquiries suggest their own times instead of timetable slots
+  `ALTER TABLE enquiries ADD COLUMN IF NOT EXISTS custom_times JSONB NOT NULL DEFAULT '[]'::jsonb`,
+  // existing students: phone + PIN login, a regular weekly slot, and requests
+  `CREATE TABLE IF NOT EXISTS students (
+     id          SERIAL PRIMARY KEY,
+     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+     name        TEXT NOT NULL,
+     phone       TEXT NOT NULL,
+     pin_hash    TEXT NOT NULL,
+     level       TEXT,
+     lesson_type TEXT NOT NULL DEFAULT 'private' CHECK (lesson_type IN ('private','group')),
+     subjects    TEXT[] NOT NULL DEFAULT '{}',
+     slot_id     INTEGER REFERENCES availability_slots(id) ON DELETE SET NULL,
+     start_date  DATE,
+     active      BOOLEAN NOT NULL DEFAULT true,
+     enquiry_id  INTEGER REFERENCES enquiries(id) ON DELETE SET NULL,
+     lang        TEXT NOT NULL DEFAULT 'en',
+     notes       TEXT,
+     last_login  TIMESTAMPTZ
+   )`,
+  `CREATE INDEX IF NOT EXISTS students_phone_idx ON students (phone)`,
+  `CREATE TABLE IF NOT EXISTS student_requests (
+     id          SERIAL PRIMARY KEY,
+     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+     student_id  INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+     kind        TEXT NOT NULL CHECK (kind IN ('reschedule','absence','change')),
+     lesson_date DATE,
+     to_slot_id  INTEGER REFERENCES availability_slots(id) ON DELETE SET NULL,
+     to_date     DATE,
+     to_label    TEXT,
+     recording   BOOLEAN NOT NULL DEFAULT false,
+     note        TEXT,
+     status      TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected','cancelled')),
+     reply       TEXT,
+     decided_at  TIMESTAMPTZ
+   )`,
+  `CREATE INDEX IF NOT EXISTS student_requests_student_idx ON student_requests (student_id, created_at DESC)`,
 ]
 for (const s of statements) await sql.query(s)
 

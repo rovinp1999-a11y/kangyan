@@ -12,7 +12,7 @@ const PRESETS = [
 /* timetable                                                           */
 /* ------------------------------------------------------------------ */
 
-export function SlotsTab({ slots, setSlots, enquiries, onAuthError, notify, onOpen }) {
+export function SlotsTab({ slots, setSlots, enquiries, students = [], onAuthError, notify, onOpen }) {
   // Open enquiries (not closed) that picked each slot.
   const interest = useMemo(() => {
     const m = {}
@@ -236,6 +236,9 @@ export function SlotsTab({ slots, setSlots, enquiries, onAuthError, notify, onOp
                               <Icon name="trash" />
                             </button>
                           </div>
+                        )}
+                        {students.some((x) => x.active && x.slot_id === s.id) && (
+                          <p className="adm-slot__regular"><Icon name="users" />Regular: {students.filter((x) => x.active && x.slot_id === s.id).map((x) => x.name).join(', ')}</p>
                         )}
                         {interest[s.id] && (
                           <div className="adm-slot__people">

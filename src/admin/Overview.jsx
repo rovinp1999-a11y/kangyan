@@ -3,6 +3,7 @@ import { useMemo } from 'react'
 import { LEVELS, SUBJECTS, SLOT_KIND_LABEL, slotLabel } from '../../shared/constants.js'
 import { STATUS_META, FORMAT_LABEL, timeAgo, typeOf } from './lib.jsx'
 import { Columns, Legend, ShareBar, StackBars } from './charts.jsx'
+import { sameTimeGroups } from './Schedule.jsx'
 
 const DAY = 864e5
 const mondayOf = (t) => {
@@ -67,10 +68,17 @@ export function Overview({ rows, slots, onOpen, go }) {
 
     const status = ['new', 'contacted', 'confirmed', 'closed'].map((k) => ({ key: k, label: STATUS_META[k].label, value: rows.filter((r) => r.status === k).length, color: STATUS_META[k].color }))
     const waiting = rows.filter((r) => r.status === 'new').sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
-    const flexible = open.filter((r) => !r.preferred_slots.length).length
+    const flexible = open.filter((r) => !r.preferred_slots.length && !r.custom_times.length).length
+
+    // Times where 2+ open enquiries at the same stage overlap: candidate group classes.
+    const picks = new Map()
+    for (const r of open) for (const p of r.preferred_slots) if (p.live) picks.set(p.id, [...(picks.get(p.id) || []), r])
+    const ideas = sameTimeGroups(slots, picks)
+      .flatMap((g) => g.stages.filter((st) => st.people.length >= 2).map((st) => ({ slot: g.slot, ...st })))
+      .sort((a, b) => b.people.length - a.people.length)
 
     return {
-      perWeek, slotRows, levelRows, subjectRows, formatRows, status, waiting, flexible,
+      perWeek, slotRows, ideas, levelRows, subjectRows, formatRows, status, waiting, flexible,
       kpi: {
         total: rows.length,
         newCount: waiting.length,
@@ -108,6 +116,26 @@ export function Overview({ rows, slots, onOpen, go }) {
       </div>
 
       <div className="ov-grid">
+        <Card title="Group class ideas" sub="Times where 2 or more students at the same stage overlap" wide>
+          {data.ideas.length ? (
+            <ul className="ov-ideas">
+              {data.ideas.slice(0, 6).map((g) => (
+                <li key={`${g.slot.id}-${g.key}`}>
+                  <button type="button" onClick={() => go('schedule')}>
+                    <span className="ov-ideas__n">{g.people.length}</span>
+                    <span className="ov-ideas__body">
+                      <b>{slotLabel(g.slot)} · {g.label}</b>
+                      <span>{g.people.map((r) => r.student_name).join(', ')}</span>
+                      {g.shared.length > 0 && <small>Shared: {g.shared.map(([x, n]) => `${x} (${n})`).join(', ')}</small>}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : <p className="cempty">No overlaps yet. When 2 or more students at the same stage pick the same time, they appear here.</p>}
+          {data.ideas.length > 0 && <button type="button" className="ov-link" onClick={() => go('schedule')}>See every shared time →</button>}
+        </Card>
+
         <Card title="Enquiries per week" sub="Last 8 weeks, Monday to Sunday">
           <Columns data={data.perWeek} />
         </Card>

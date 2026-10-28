@@ -11,6 +11,7 @@ import Faq from './components/Faq.jsx'
 
 // The dashboard is only for the tutor, so visitors never download it.
 const AdminPage = lazy(() => import('./admin/AdminPage.jsx'))
+const StudentPage = lazy(() => import('./student/StudentPage.jsx'))
 
 // Ask for a language once per visit (tab session). A refresh mid-enquiry doesn't ask
 // again, and links that already say ?lang=en / ?lang=zh skip the question.
@@ -82,6 +83,13 @@ function EnquiryPage() {
 
 export default function App() {
   if (window.location.pathname.replace(/\/+$/, '') === '/admin') return <Suspense fallback={null}><AdminPage /></Suspense>
+  if (window.location.pathname.replace(/\/+$/, '') === '/student') {
+    return (
+      <LangProvider title={(t) => (t.htmlLang === 'en' ? 'Student — Kangyan' : '学生 — Kangyan')}>
+        <Suspense fallback={null}><StudentPage /></Suspense>
+      </LangProvider>
+    )
+  }
   return (
     <LangProvider>
       <EnquiryPage />

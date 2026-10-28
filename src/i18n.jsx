@@ -97,12 +97,25 @@ const en = {
       error: "The timetable didn't load. Tap Continue and I'll suggest times.",
       flexible: "I'm flexible, skip this",
       picked: (n) => `${n} time${n > 1 ? 's' : ''} picked`,
+      custom: {
+        q: 'When would in-person lessons suit you?',
+        limited: "My in-person availability is very limited, but please still fill in the times that suit you. If I can't fit you in, I can refer you to another tutor.",
+        help: 'Pick a day and a start time, then add it. Each lesson is 2 hours unless you change it. Add as many times as suit you.',
+        yours: 'Your times',
+        none: 'No times added yet.',
+        shorter: '30 minutes shorter',
+        longer: '30 minutes longer',
+        remove: 'Remove',
+        day: 'Day',
+        start: 'Start time',
+        pickDay: 'Pick a day first',
+        add: (day) => `Add ${day}`,
+      },
       none: 'No times picked',
       taken: 'Full',
     },
     format: {
       q: 'Online or in person?',
-      privateHelp: "Weekday in-person 1-to-1 slots are very limited. Enquire anyway: if I can't fit you in, I can refer you to another tutor.",
       opts: { online: ['Online', 'Learn from home'], 'in-person': ['In person', 'At your place or nearby'], either: ['Either works', 'Whatever fits best'] },
       location: 'Where would lessons be?',
       locationPh: 'Area or address, e.g. Cheras, Kuala Lumpur',
@@ -276,12 +289,25 @@ const zh = {
       error: '时间表暂时打不开。直接按下一步，我再跟你约时间。',
       flexible: '时间都可以',
       picked: (n) => `已选 ${n} 个时段`,
+      custom: {
+        q: '面对面上课，什么时间比较方便？',
+        limited: '我的面对面课时段非常有限，不过还是欢迎你先填好方便的时间。如果我排不出时间，可以介绍其他老师给你。',
+        help: '先选星期和开始时间，再按"加上"。每堂课默认 2 小时，可以再调整。方便的时间都可以加上。',
+        yours: '你选的时间',
+        none: '还没加上时间。',
+        shorter: '缩短 30 分钟',
+        longer: '延长 30 分钟',
+        remove: '删除',
+        day: '星期',
+        start: '开始时间',
+        pickDay: '先选星期',
+        add: (day) => `加上${day}`,
+      },
       none: '还没选时段',
       taken: '已满',
     },
     format: {
       q: '想上网课，还是面对面？',
-      privateHelp: '周一至周五的一对一面对面时段非常有限。还是欢迎先咨询，如果我排不出时间，可以介绍其他老师给你。',
       opts: { online: ['网课', '在家就能上'], 'in-person': ['面对面', '到你家或附近上课'], either: ['都可以', '看哪个方便'] },
       location: '上课地点大概在哪里？',
       locationPh: '例如：蕉赖、梳邦、八打灵再也',
@@ -413,7 +439,7 @@ function initialLang() {
 
 const LangContext = createContext(null)
 
-export function LangProvider({ children }) {
+export function LangProvider({ children, title }) {
   const [lang, setLangState] = useState(initialLang)
   const t = STRINGS[lang]
 
@@ -438,7 +464,7 @@ export function LangProvider({ children }) {
 
   useEffect(() => {
     document.documentElement.lang = t.htmlLang
-    document.title = t.meta.title
+    document.title = title ? title(t) : t.meta.title
     document.querySelector('meta[name="description"]')?.setAttribute('content', t.meta.description)
   }, [t])
 
