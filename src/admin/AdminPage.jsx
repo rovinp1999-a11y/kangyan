@@ -195,11 +195,22 @@ export default function AdminPage() {
       // Start from the times they picked; the form lets you change or add more.
       lessons: r.preferred_slots.filter((p) => p.live).map((p) => ({ weekday: p.weekday, start: p.start, end: p.end })).slice(0, 3),
       lang: r.lang === 'zh' ? 'zh' : 'en', enquiryId: r.id,
-      notes: [r.school, r.location].filter(Boolean).join(' · '),
+      notes: [
+        r.school,
+        r.format === 'in-person' ? `In person${r.location ? `: ${r.location}` : ''}` : r.location,
+        r.custom_labels?.length ? `Asked for: ${r.custom_labels.join(', ')}` : '',
+        r.email ? `Email: ${r.email}` : '',
+        r.message ? `Message: ${r.message}` : '',
+      ].filter(Boolean).join('\n'),
     })
     setTab('students')
   }, [setTab])
   const opened = rows && openId != null ? rows.find((r) => r.id === openId) : null
+  // Enquiries that have already become students.
+  const studentOf = useMemo(() => {
+    const m = new Map((students || []).filter((s) => s.enquiry_id).map((s) => [s.enquiry_id, s]))
+    return (r) => m.get(r.id) || null
+  }, [students])
 
   const newCount = enquiries ? enquiries.filter((r) => r.status === 'new').length : 0
   const weekAgo = Date.now() - 7 * 864e5
@@ -267,8 +278,8 @@ export default function AdminPage() {
               <p>{HEAD[tab][1]}</p>
             </div>
             {tab === 'overview' && <Overview rows={rows} slots={slots} onOpen={setOpenId} go={go} />}
-            {tab === 'enquiries' && <EnquiriesTab rows={rows} actions={actions} onOpen={setOpenId} onMakeStudent={makeStudent} notify={notify} filter={enqFilter} setFilter={setEnqFilter} />}
-            {tab === 'students' && <StudentsTab students={students} setStudents={setStudents} requests={requests} setRequests={setRequests} slots={slots} refreshSlots={refreshSlots} prefill={prefill} clearPrefill={clearPrefill} notify={notify} onAuthError={logout} />}
+            {tab === 'enquiries' && <EnquiriesTab rows={rows} actions={actions} onOpen={setOpenId} onMakeStudent={makeStudent} studentOf={studentOf} onViewStudent={editStudent} notify={notify} filter={enqFilter} setFilter={setEnqFilter} />}
+            {tab === 'students' && <StudentsTab students={students} setStudents={setStudents} requests={requests} setRequests={setRequests} slots={slots} refreshSlots={refreshSlots} prefill={prefill} clearPrefill={clearPrefill} onCreated={(s) => s.enquiry_id && setEnquiries((rs) => rs.map((r) => (r.id === s.enquiry_id ? { ...r, status: 'confirmed' } : r)))} notify={notify} onAuthError={logout} />}
             {tab === 'schedule' && <Schedule rows={rows} slots={slots} onOpen={setOpenId} notify={notify} />}
             {tab === 'slots' && <SlotsTab slots={slots} setSlots={setSlots} enquiries={rows} students={students} requests={requests} setStudents={setStudents} setRequests={setRequests} refreshSlots={refreshSlots} onEditStudent={editStudent} onAuthError={logout} notify={notify} onOpen={setOpenId} />}
           </>
@@ -277,7 +288,7 @@ export default function AdminPage() {
 
       {opened && (
         <Drawer onClose={closeDrawer} label={`Enquiry from ${opened.student_name}`}>
-          <EnquiryCard r={opened} onStatus={actions.status} onNotes={actions.notes} onMakeStudent={makeStudent} notify={notify} />
+          <EnquiryCard r={opened} onStatus={actions.status} onNotes={actions.notes} onMakeStudent={makeStudent} student={studentOf(opened)} onViewStudent={(s) => { setOpenId(null); editStudent(s) }} notify={notify} />
         </Drawer>
       )}
 

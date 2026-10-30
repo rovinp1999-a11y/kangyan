@@ -74,7 +74,7 @@ export function Overview({ rows, slots, onOpen, go }) {
     const picks = new Map()
     for (const r of open) for (const p of r.preferred_slots) if (p.live) picks.set(p.id, [...(picks.get(p.id) || []), r])
     const ideas = sameTimeGroups(slots, picks)
-      .flatMap((g) => g.stages.filter((st) => st.people.length >= 2).map((st) => ({ slot: g.slot, ...st })))
+      .flatMap((g) => g.groups.map((x) => ({ slot: g.slot, ...x })))
       .sort((a, b) => b.people.length - a.people.length)
 
     return {
@@ -116,23 +116,23 @@ export function Overview({ rows, slots, onOpen, go }) {
       </div>
 
       <div className="ov-grid">
-        <Card title="Group class ideas" sub="Times where 2 or more students at the same stage overlap" wide>
+        <Card title="Group class ideas" sub="Same time, same subject and same level" wide>
           {data.ideas.length ? (
             <ul className="ov-ideas">
               {data.ideas.slice(0, 6).map((g) => (
-                <li key={`${g.slot.id}-${g.key}`}>
+                <li key={`${g.slot.id}-${g.level}-${g.subject}`}>
                   <button type="button" onClick={() => go('schedule')}>
                     <span className="ov-ideas__n">{g.people.length}</span>
                     <span className="ov-ideas__body">
-                      <b>{slotLabel(g.slot)} · {g.label}</b>
-                      <span>{g.people.map((r) => r.student_name).join(', ')}</span>
-                      {g.shared.length > 0 && <small>Shared: {g.shared.map(([x, n]) => `${x} (${n})`).join(', ')}</small>}
+                      <b>{g.level} · {g.subject}</b>
+                      <span>{slotLabel(g.slot)}</span>
+                      <small>{g.people.map((r) => r.student_name).join(', ')}</small>
                     </span>
                   </button>
                 </li>
               ))}
             </ul>
-          ) : <p className="cempty">No overlaps yet. When 2 or more students at the same stage pick the same time, they appear here.</p>}
+          ) : <p className="cempty">No matches yet. When 2 or more students at the same level pick the same time for the same subject, they appear here.</p>}
           {data.ideas.length > 0 && <button type="button" className="ov-link" onClick={() => go('schedule')}>See every shared time →</button>}
         </Card>
 

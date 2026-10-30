@@ -143,6 +143,7 @@ function StudentForm({ initial, slots, onSave, onCancel, busy }) {
   return (
     <form className="sform" onSubmit={(e) => { e.preventDefault(); onSave(f) }}>
       <h2>{editing ? `Edit ${initial.name}` : initial.enquiryId ? 'Add student from enquiry' : 'Add a student'}</h2>
+      {!editing && initial.enquiryId && <p className="sform__note">Filled in from the enquiry. Check the details, set their weekly lessons, then save. The enquiry is marked confirmed.</p>}
       <label className="sform__f"><span>Student name</span><input value={f.name} onChange={(e) => set('name', e.target.value)} required minLength={2} maxLength={80} /></label>
       <label className="sform__f"><span>WhatsApp number (student or parent)</span><input type="tel" value={f.phone} onChange={(e) => set('phone', e.target.value)} required placeholder="012-345 6789" /></label>
       <div className="sform__row">
@@ -173,7 +174,6 @@ function StudentForm({ initial, slots, onSave, onCancel, busy }) {
         <WeeklyLessons value={f.lessons} onChange={(v) => set('lessons', v)} slots={slots} lessonType={f.lessonType} own={initial.id ? initial.lessons : []} />
       </div>
       <div className="sform__row">
-        <label className="sform__f"><span>First lesson (optional)</span><input type="date" value={f.startDate} onChange={(e) => set('startDate', e.target.value)} /></label>
         <label className="sform__f"><span>Messages in</span>
           <select value={f.lang} onChange={(e) => set('lang', e.target.value)}><option value="en">English</option><option value="zh">中文</option></select>
         </label>
@@ -209,7 +209,7 @@ function RequestCard({ r, s, slots, onDecide }) {
   )
 }
 
-export function StudentsTab({ students, setStudents, requests, setRequests, slots, refreshSlots, prefill, clearPrefill, notify, onAuthError }) {
+export function StudentsTab({ students, setStudents, requests, setRequests, slots, refreshSlots, prefill, clearPrefill, onCreated, notify, onAuthError }) {
   const [form, setForm] = useState(null) // form initial values
   const [busy, setBusy] = useState(false)
   const [pin, setPin] = useState(null) // { s, pin }
@@ -227,7 +227,7 @@ export function StudentsTab({ students, setStudents, requests, setRequests, slot
   const save = async (f) => {
     setBusy(true)
     try {
-      const body = { ...f, lessons: f.lessons.map(({ weekday, start, end }) => ({ weekday, start, end })), startDate: f.startDate || null }
+      const body = { ...f, lessons: f.lessons.map(({ weekday, start, end }) => ({ weekday, start, end })), startDate: null }
       if (f.id) {
         const { student } = await api('/api/admin/students', { method: 'POST', body: { action: 'update', ...body } })
         setStudents((list) => list.map((x) => (x.id === student.id ? student : x)))
@@ -236,6 +236,7 @@ export function StudentsTab({ students, setStudents, requests, setRequests, slot
         const { student, pin: p } = await api('/api/admin/students', { method: 'POST', body: { action: 'create', ...body } })
         setStudents((list) => [...list, student].sort((a, b) => a.name.localeCompare(b.name)))
         setPin({ s: student, pin: p })
+        onCreated?.(student)
       }
       setForm(null)
       refreshSlots()

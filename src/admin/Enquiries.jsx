@@ -86,7 +86,7 @@ export function StatusMenu({ value, onChange, name }) {
 /* enquiries                                                           */
 /* ------------------------------------------------------------------ */
 
-export function EnquiryCard({ r, onStatus, onNotes, onMakeStudent, notify }) {
+export function EnquiryCard({ r, onStatus, onNotes, onMakeStudent, student, onViewStudent, notify }) {
   const [more, setMore] = useState(false)
   const [editing, setEditing] = useState(false)
   const [note, setNote] = useState(r.admin_notes || '')
@@ -185,6 +185,18 @@ export function EnquiryCard({ r, onStatus, onNotes, onMakeStudent, notify }) {
         {[r.phone, r.email].filter(Boolean).join(' · ')}
       </p>
 
+      {onMakeStudent && (
+        student ? (
+          <button type="button" className="enq__student is-done" onClick={() => onViewStudent?.(student)} title="Open this student">
+            <Icon name="check" /><span>Student · {student.active ? 'active' : 'deactivated'}</span><small>View</small>
+          </button>
+        ) : (
+          <button type="button" className="enq__student" onClick={() => onMakeStudent(r)} title="Opens the student form filled in from this enquiry">
+            <Icon name="users" /><span>Add as student</span><small>Filled in from this enquiry · editable</small>
+          </button>
+        )
+      )}
+
       <footer className="enq__actions">
         {r.phone && (
           <a className="act act--wa" href={waLink(r.phone, draftMessage(r))} target="_blank" rel="noopener noreferrer" title="Opens WhatsApp with a drafted reply you can edit"><Icon name="chat" />WhatsApp</a>
@@ -192,7 +204,7 @@ export function EnquiryCard({ r, onStatus, onNotes, onMakeStudent, notify }) {
         {r.email && <a className="act" href={`mailto:${encodeURIComponent(r.email)}?subject=${subject}&body=${encodeURIComponent(draftMessage(r))}`}><Icon name="mail" />Email</a>}
         {r.phone && <a className="act" href={`tel:${r.phone}`}><Icon name="phone" />Call</a>}
         <button type="button" className="act" onClick={copy}><Icon name="copy" />{r.email ? 'Copy email' : 'Copy number'}</button>
-        {onMakeStudent && r.phone && <button type="button" className="act" onClick={() => onMakeStudent(r)} title="Create a student login from this enquiry"><Icon name="users" />Add as student</button>}
+
       </footer>
     </article>
   )
@@ -211,7 +223,7 @@ export function Person({ r, onOpen }) {
   )
 }
 
-export function EnquiryTable({ rows, onOpen }) {
+export function EnquiryTable({ rows, onOpen, studentOf = () => null }) {
   return (
     <div className="etable-wrap">
       <table className="etable">
@@ -223,7 +235,7 @@ export function EnquiryTable({ rows, onOpen }) {
             <tr key={r.id} className={r.status === 'closed' ? 'is-closed' : ''} onClick={() => onOpen(r.id)}>
               <td>
                 <button type="button" className="etable__name" onClick={(e) => { e.stopPropagation(); onOpen(r.id) }}>{r.student_name}</button>
-                <small>{[ENQUIRER_LABEL[r.enquirer], r.school].filter(Boolean).join(' · ')}</small>
+                <small>{[studentOf(r) && '✓ Student', ENQUIRER_LABEL[r.enquirer], r.school].filter(Boolean).join(' · ')}</small>
               </td>
               <td>{r.level}</td>
               <td><span className={`want want--${typeOf(r)}`}>{KIND_SHORT[typeOf(r)]}</span></td>
@@ -242,7 +254,7 @@ export function EnquiryTable({ rows, onOpen }) {
 
 const VIEWS = [['cards', 'Cards', 'cards'], ['table', 'Table', 'list']]
 
-export function EnquiriesTab({ rows, actions, onOpen, onMakeStudent, notify, filter, setFilter }) {
+export function EnquiriesTab({ rows, actions, onOpen, onMakeStudent, studentOf = () => null, onViewStudent, notify, filter, setFilter }) {
   const [q, setQ] = useState('')
   const [sort, setSort] = useState('newest')
   const [kind, setKind] = useState('all')
@@ -352,10 +364,10 @@ export function EnquiriesTab({ rows, actions, onOpen, onMakeStudent, notify, fil
             : 'Try another filter or search term.'}
         </div>
       ) : view === 'table' ? (
-        <EnquiryTable rows={shown} onOpen={onOpen} />
+        <EnquiryTable rows={shown} onOpen={onOpen} studentOf={studentOf} />
       ) : (
         <div className="enq-list">
-          {shown.map((r) => <EnquiryCard key={r.id} r={r} onStatus={actions.status} onNotes={actions.notes} onMakeStudent={onMakeStudent} notify={notify} />)}
+          {shown.map((r) => <EnquiryCard key={r.id} r={r} onStatus={actions.status} onNotes={actions.notes} onMakeStudent={onMakeStudent} student={studentOf(r)} onViewStudent={onViewStudent} notify={notify} />)}
         </div>
       )}
     </>

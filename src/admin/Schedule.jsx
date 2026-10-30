@@ -2,7 +2,7 @@
 // student × slot matrix, so overlaps are visible at a glance.
 import { useMemo, useState } from 'react'
 import { WEEKDAYS_SHORT, SUBJECTS, formatRange, slotLabel, feeStage } from '../../shared/constants.js'
-import { Icon, KIND_SHORT, STATUS_META, sortSlots, typeOf, useStored } from './lib.jsx'
+import { Icon, KIND_SHORT, STATUS_META, SYSTEM_LABEL, levelSystem, sortSlots, typeOf, useStored } from './lib.jsx'
 import { heat } from './charts.jsx'
 
 const MODES = [['same', 'Same time', 'group'], ['grid', 'Week grid', 'grid'], ['matrix', 'Student list', 'list']]
@@ -13,26 +13,39 @@ const STAGES = [
 ]
 
 /**
- * For every slot two or more students picked: who they are, split into junior and
- * senior (a group class needs students at a similar stage), and the subjects they share.
+ * For every slot two or more students picked, the group classes it could hold: students
+ * with the same subject and the same level (same syllabus). Close matches share the
+ * subject, school system and stage (e.g. SPM junior: Form 2 + Form 3) but not the level. A student taking several
+ * subjects can appear in more than one group.
  */
 export function sameTimeGroups(slots, picks) {
   return sortSlots(slots)
     .filter((s) => (picks.get(s.id) || []).length >= 2)
     .map((s) => {
       const list = picks.get(s.id)
-      const stages = STAGES.map(([key, label, levels]) => {
-        const people = list.filter((r) => (feeStage(r.level) || 'other') === key)
-        const shared = SUBJECTS
-          .map((x) => [x, people.filter((r) => r.subjects.includes(x)).length])
-          .filter(([, n]) => n >= 2)
-          .sort((a, b) => b[1] - a[1])
-        return { key, label, levels, people, shared }
-      }).filter((g) => g.people.length)
-      const best = Math.max(...stages.map((g) => g.people.length))
-      return { slot: s, list, stages, best }
+      const groups = []
+      const near = []
+      for (const subject of SUBJECTS) {
+        const takers = list.filter((r) => r.subjects.includes(subject))
+        const byLevel = new Map()
+        for (const r of takers) byLevel.set(r.level, [...(byLevel.get(r.level) || []), r])
+        for (const [level, people] of byLevel) if (people.length >= 2) groups.push({ subject, level, people })
+        // Same subject, same school system and stage, different levels: could still be combined.
+        for (const system of ['uec', 'kssm', 'igcse']) {
+          for (const [key, label] of STAGES) {
+            const stage = takers.filter((r) => levelSystem(r.level) === system && feeStage(r.level) === key)
+            const levels = [...new Set(stage.map((r) => r.level))]
+            if (stage.length >= 2 && levels.length >= 2) near.push({ subject, stage: `${SYSTEM_LABEL[system]} ${label.toLowerCase()}`, levels, people: stage })
+          }
+        }
+      }
+      groups.sort((a, b) => b.people.length - a.people.length)
+      const grouped = new Set([...groups, ...near].flatMap((g) => g.people.map((r) => r.id)))
+      const alone = list.filter((r) => !grouped.has(r.id))
+      const best = groups.length ? groups[0].people.length : 0
+      return { slot: s, list, groups, near, alone, best }
     })
-    .sort((a, b) => b.best - a.best || b.list.length - a.list.length)
+    .sort((a, b) => b.best - a.best || b.near.length - a.near.length || b.list.length - a.list.length)
 }
 
 /** In-person enquiries with the times they suggested themselves (usually passed to another tutor). */
@@ -64,6 +77,24 @@ function InPerson({ people, onOpen }) {
   )
 }
 
+function PeopleList({ people, onOpen }) {
+  return (
+    <ul className="same-people">
+      {people.map((r) => (
+        <li key={r.id}>
+          <button type="button" onClick={() => onOpen(r.id)}>
+            <span className="dot" style={{ '--c': STATUS_META[r.status].color }} aria-label={STATUS_META[r.status].label} />
+            <b>{r.student_name}</b>
+            <span className="same-people__lvl">{r.level}</span>
+            <span className={`want want--${typeOf(r)}`}>{KIND_SHORT[typeOf(r)]}</span>
+            <span className="same-people__subj">{r.subjects.join(', ')}</span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 function SameTime({ groups, inPerson, onOpen }) {
   if (!groups.length && !inPerson.length) {
     return (
@@ -81,7 +112,7 @@ function SameTime({ groups, inPerson, onOpen }) {
           When two or more students pick the same slot, they will show up here.
         </div>
       )}
-      {groups.map(({ slot: s, list, stages }) => (
+      {groups.map(({ slot: s, list, groups, near, alone }) => (
         <section className={`same-card ${s.status === 'open' ? '' : 'is-taken'}`} key={s.id}>
           <header className="same-card__head">
             <div>
@@ -93,40 +124,39 @@ function SameTime({ groups, inPerson, onOpen }) {
             </div>
             <span className="same-card__n"><b>{list.length}</b> students</span>
           </header>
-          {stages.map((g) => {
+          {groups.map((g) => {
             const wantGroup = g.people.filter((r) => typeOf(r) === 'group').length
             return (
-              <div className={`same-stage ${g.people.length >= 2 ? 'is-match' : ''}`} key={g.key}>
-                <div className="same-stage__head">
-                  <b>{g.label} · {g.people.length}</b>
-                  {g.levels && <small>{g.levels}</small>}
-                </div>
-                {g.people.length >= 2 && (
-                  <p className="same-stage__idea">
-                    <Icon name="group" />
-                    <span>
-                      Could be a group of {g.people.length}
-                      {g.shared.length > 0 && <> · shared: {g.shared.map(([x, n]) => `${x} (${n})`).join(', ')}</>}
-                      {wantGroup < g.people.length && <> · {g.people.length - wantGroup} asked for 1-to-1</>}
-                    </span>
-                  </p>
-                )}
-                <ul className="same-people">
-                  {g.people.map((r) => (
-                    <li key={r.id}>
-                      <button type="button" onClick={() => onOpen(r.id)}>
-                        <span className="dot" style={{ '--c': STATUS_META[r.status].color }} aria-label={STATUS_META[r.status].label} />
-                        <b>{r.student_name}</b>
-                        <span className="same-people__lvl">{r.level}</span>
-                        <span className={`want want--${typeOf(r)}`}>{KIND_SHORT[typeOf(r)]}</span>
-                        <span className="same-people__subj">{r.subjects.join(', ')}</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
+              <div className="same-stage is-match" key={`${g.level}-${g.subject}`}>
+                <p className="same-stage__idea">
+                  <Icon name="group" />
+                  <span>
+                    Group idea: <b>{g.level} · {g.subject}</b> · {g.people.length} students
+                    {wantGroup < g.people.length && <> · {g.people.length - wantGroup} asked for 1-to-1</>}
+                  </span>
+                </p>
+                <PeopleList people={g.people} onOpen={onOpen} />
               </div>
             )
           })}
+          {near.map((g) => (
+            <div className="same-stage same-stage--near" key={`n-${g.subject}-${g.stage}`}>
+              <div className="same-stage__head">
+                <b>Close match · {g.subject}</b>
+                <small>{g.stage}, different levels: {g.levels.join(', ')}</small>
+              </div>
+              <PeopleList people={g.people} onOpen={onOpen} />
+            </div>
+          ))}
+          {alone.length > 0 && (
+            <div className="same-stage same-stage--alone">
+              <div className="same-stage__head">
+                <b>{groups.length || near.length ? 'No match' : 'No matching subject or level'} · {alone.length}</b>
+                <small>Same time, but a different subject or syllabus</small>
+              </div>
+              <PeopleList people={alone} onOpen={onOpen} />
+            </div>
+          )}
         </section>
       ))}
       <InPerson people={inPerson} onOpen={onOpen} />
