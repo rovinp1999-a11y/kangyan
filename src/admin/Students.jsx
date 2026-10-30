@@ -31,7 +31,16 @@ export function loginMessage(s, pin) {
   if (s.lang === 'zh') {
     return `${s.name}你好！这是 Kangyan 补习的学生登录资料：\n\n${SITE}\nWhatsApp 号码：${phone}\nPIN 码：${pin}\n\n登录后可以看到接下来的课，也可以请假、申请改一对一的上课时间（至少提前 12 小时），或者更改固定上课时间。`
   }
-  return `Hi ${first(s.name)}! Here are your login details for Kangyan tuition:\n\n${SITE}\nWhatsApp number: ${phone}\nPIN: ${pin}\n\nThere you can see your upcoming lessons, report an absence, ask to move a 1-to-1 lesson (at least 12 hours before), or change your regular time.`
+  return `Hi ${first(s.name)}! Here are your login details for Kangyan tuition:\n\n${SITE}\nWhatsApp number: ${phone}\nPIN: ${pin}\n\nThere you can see your upcoming lessons, report an absence, ask to move a 1-to-1 lesson (at least 12 hours before), or change your regular time. You can change your PIN after logging in.`
+}
+
+/** Reminder of the student page for someone who already has a PIN (it can't be read back). */
+export function pageMessage(s) {
+  const phone = localPhone(s.phone)
+  if (s.lang === 'zh') {
+    return `${s.name}你好！提醒一下，Kangyan 补习的学生页面在这里：\n\n${SITE}\n登录：WhatsApp 号码 ${phone} 加上你的 6 位数 PIN 码。\n\n忘记 PIN 码的话回复我，我再发新的给你。`
+  }
+  return `Hi ${first(s.name)}! A reminder that your Kangyan student page is here:\n\n${SITE}\nLog in with your WhatsApp number ${phone} and your 6-digit PIN.\n\nForgot your PIN? Reply and I'll send you a new one.`
 }
 
 function decisionMessage(r, s, slots, approved) {
@@ -254,6 +263,19 @@ export function StudentsTab({ students, setStudents, requests, setRequests, slot
       setPin({ s, pin: p })
     } catch (e) { fail(e) }
   }
+  // Never logged in: make a fresh PIN and open WhatsApp with the full login details.
+  const sendLogin = async (s) => {
+    if (!window.confirm(`Send ${s.name} their login details? This creates a new PIN; any PIN sent before stops working.`)) return
+    const win = window.open('', '_blank') // opened now so the browser doesn't block it after the wait
+    try {
+      const { pin: p } = await api('/api/admin/students', { method: 'POST', body: { action: 'resetPin', id: s.id } })
+      if (win) win.location.href = waLink(s.phone, loginMessage(s, p))
+      setPin({ s, pin: p })
+    } catch (e) {
+      win?.close()
+      fail(e)
+    }
+  }
   const setActive = async (s, active) => {
     try {
       const { student } = await api('/api/admin/students', { method: 'POST', body: { action: 'update', id: s.id, active } })
@@ -334,7 +356,9 @@ export function StudentsTab({ students, setStudents, requests, setRequests, slot
                   <footer>
                     <button type="button" className="act" onClick={() => setForm(formFromStudent(s))}><Icon name="edit" />Edit</button>
                     <button type="button" className="act" onClick={() => resetPin(s)}>New PIN</button>
-                    <a className="act act--wa" href={waLink(s.phone)} target="_blank" rel="noopener noreferrer"><Icon name="chat" />WhatsApp</a>
+                    {s.last_login
+                      ? <a className="act act--wa" href={waLink(s.phone, pageMessage(s))} target="_blank" rel="noopener noreferrer" title="Opens WhatsApp with the page link and how to log in"><Icon name="chat" />WhatsApp</a>
+                      : <button type="button" className="act act--wa" onClick={() => sendLogin(s)} title="Creates a PIN and opens WhatsApp with the login details"><Icon name="chat" />Send login details</button>}
                     <button type="button" className="act" onClick={() => setActive(s, !s.active)}>{s.active ? 'Deactivate' : 'Reactivate'}</button>
                     <button type="button" className="icon-btn icon-btn--danger" onClick={() => remove(s)} aria-label={`Delete ${s.name}`}><Icon name="trash" /></button>
                   </footer>

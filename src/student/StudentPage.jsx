@@ -276,7 +276,7 @@ function CalDetail({ ev, st, T, L, lang, onSheet, onCancel }) {
   )
 }
 
-function PinForm({ T, token, onToken, notify }) {
+function PinForm({ T, token, onToken, notify, open, setOpen }) {
   const [cur, setCur] = useState('')
   const [next, setNext] = useState('')
   const [err, setErr] = useState('')
@@ -291,6 +291,7 @@ function PinForm({ T, token, onToken, notify }) {
       setCur('')
       setNext('')
       notify(T.pinSaved)
+      setOpen(false)
     } catch (e2) {
       setErr(T.errors[e2.code] || T.errors.server)
     } finally {
@@ -304,7 +305,7 @@ function PinForm({ T, token, onToken, notify }) {
     </label>
   )
   return (
-    <details className="stu-card stu-pin">
+    <details className="stu-card stu-pin" id="change-pin" open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
       <summary>{T.pinH}</summary>
       <form onSubmit={submit}>
         {pinInput(cur, setCur, T.pinCurrent)}
@@ -325,6 +326,12 @@ export default function StudentPage() {
   const [loadErr, setLoadErr] = useState('')
   const [sheet, setSheet] = useState(null) // { kind, lesson?, preset? }
   const [week, setWeek] = useState(0)
+  const [pinOpen, setPinOpen] = useState(false)
+  // The top-bar PIN button opens the form at the bottom and scrolls to it.
+  const openPin = () => {
+    setPinOpen(true)
+    setTimeout(() => document.getElementById('change-pin')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50)
+  }
   const [sel, setSel] = useState(null) // key of the tapped calendar entry
   const [toast, setToast] = useState(null)
 
@@ -378,6 +385,7 @@ export default function StudentPage() {
       <a href="/" className="admin__logo">Kangyan<span className="dot" aria-hidden="true" /><small>{T.title}</small></a>
       <div className="stu-top__acts">
         <button type="button" className="stu-lang" onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}>{lang === 'zh' ? 'EN' : '中文'}</button>
+        {token && st && <button type="button" className="stu-lang" onClick={openPin} aria-label={T.pinH}><span className="stu-full">{T.pinBtn}</span><span className="stu-short">PIN</span></button>}
         {token && <button type="button" className="stu-lang" onClick={logout}>{T.logout}</button>}
       </div>
     </header>
@@ -467,7 +475,7 @@ export default function StudentPage() {
               ) : <p className="stu-muted">{T.noRequests}</p>}
             </section>
 
-            <PinForm T={T} token={token} onToken={saveToken} notify={notify} />
+            <PinForm T={T} token={token} onToken={saveToken} notify={notify} open={pinOpen} setOpen={setPinOpen} />
           </>
         )}
       </main>

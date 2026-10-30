@@ -892,6 +892,15 @@ textarea.wz__input { resize: vertical; min-height: 0; font-size: 1rem; }
 .stu-top__acts { margin-left: auto; display: flex; gap: 6px; }
 .stu-lang { font: inherit; font-size: .84rem; font-weight: 700; min-height: 38px; padding: 0 12px; border: 2px solid var(--line); border-radius: 12px; background: var(--white); color: var(--ink); cursor: pointer; }
 .stu-lang:hover { border-color: var(--ink); }
+.stu-short { display: none; }
+@media (max-width: 440px) {
+  .stu-top { gap: 8px; padding: 0 12px; }
+  .stu-top .admin__logo small { display: none; }
+  .stu-top__acts { gap: 4px; }
+  .stu-lang { padding: 0 9px; font-size: .8rem; min-height: 36px; }
+  .stu-full { display: none; }
+  .stu-short { display: inline; }
+}
 .stu-main { max-width: 640px; margin: 0 auto; padding: clamp(18px, 4vw, 32px) 16px 64px; display: grid; gap: 14px; }
 .stu-card { background: var(--white); border: 2px solid var(--ink); border-radius: var(--radius); padding: 18px; display: grid; gap: 12px; }
 .stu-card h2 { font-size: 1.15rem; }
