@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { WEEKDAYS_SHORT, formatRange, slotLabel } from '../../shared/constants.js'
 import { Icon, STATUS_META, api, getToken, setToken, sortSlots } from './lib.jsx'
-import { EnquiriesTab, EnquiryCard, Drawer } from './Enquiries.jsx'
+import { EnquiriesTab, EnquiryCard, EnquiryForm, Drawer } from './Enquiries.jsx'
 import { SlotsTab } from './Timetable.jsx'
 import { Overview } from './Overview.jsx'
 import { Schedule } from './Schedule.jsx'
@@ -72,6 +72,8 @@ export default function AdminPage() {
   const [students, setStudents] = useState(null)
   const [requests, setRequests] = useState(null)
   const [prefill, setPrefill] = useState(null)
+  const [editing, setEditing] = useState(null) // enquiry being corrected
+  const [savingEnq, setSavingEnq] = useState(false)
   const [loadErr, setLoadErr] = useState('')
   const [spinning, setSpinning] = useState(false)
   const [toast, setToast] = useState(null)
@@ -180,6 +182,20 @@ export default function AdminPage() {
     notes: (id, notes) => patchEnquiry(id, { admin_notes: notes }, { notes }, notes ? 'Note saved' : 'Note removed'),
   }), [patchEnquiry])
   const closeDrawer = useCallback(() => setOpenId(null), [])
+  const editEnquiry = useCallback((r) => { setOpenId(null); setEditing(r) }, [])
+  const saveEnquiry = async (f) => {
+    setSavingEnq(true)
+    try {
+      const { enquiry } = await api('/api/admin/enquiries', { method: 'PATCH', body: { id: editing.id, details: f } })
+      setEnquiries((rs) => rs.map((x) => (x.id === enquiry.id ? enquiry : x)))
+      setEditing(null)
+      notify('Enquiry updated')
+    } catch (e) {
+      e.unauthorized ? logout() : notify(e.message, 'error')
+    } finally {
+      setSavingEnq(false)
+    }
+  }
   // Slots change status when a 1-to-1 student is added, moved or removed.
   const refreshSlots = useCallback(async () => {
     try { const s = await fetch('/api/slots').then((r) => r.json()); if (s.ok) setSlots(sortSlots(s.slots)) } catch { /* keep the old list */ }
@@ -278,7 +294,7 @@ export default function AdminPage() {
               <p>{HEAD[tab][1]}</p>
             </div>
             {tab === 'overview' && <Overview rows={rows} slots={slots} onOpen={setOpenId} go={go} />}
-            {tab === 'enquiries' && <EnquiriesTab rows={rows} actions={actions} onOpen={setOpenId} onMakeStudent={makeStudent} studentOf={studentOf} onViewStudent={editStudent} notify={notify} filter={enqFilter} setFilter={setEnqFilter} />}
+            {tab === 'enquiries' && <EnquiriesTab rows={rows} actions={actions} onOpen={setOpenId} onMakeStudent={makeStudent} onEdit={editEnquiry} studentOf={studentOf} onViewStudent={editStudent} notify={notify} filter={enqFilter} setFilter={setEnqFilter} />}
             {tab === 'students' && <StudentsTab students={students} setStudents={setStudents} requests={requests} setRequests={setRequests} slots={slots} refreshSlots={refreshSlots} prefill={prefill} clearPrefill={clearPrefill} onCreated={(s) => s.enquiry_id && setEnquiries((rs) => rs.map((r) => (r.id === s.enquiry_id ? { ...r, status: 'confirmed' } : r)))} notify={notify} onAuthError={logout} />}
             {tab === 'schedule' && <Schedule rows={rows} slots={slots} onOpen={setOpenId} notify={notify} />}
             {tab === 'slots' && <SlotsTab slots={slots} setSlots={setSlots} enquiries={rows} students={students} requests={requests} setStudents={setStudents} setRequests={setRequests} refreshSlots={refreshSlots} onEditStudent={editStudent} onAuthError={logout} notify={notify} onOpen={setOpenId} />}
@@ -288,7 +304,13 @@ export default function AdminPage() {
 
       {opened && (
         <Drawer onClose={closeDrawer} label={`Enquiry from ${opened.student_name}`}>
-          <EnquiryCard r={opened} onStatus={actions.status} onNotes={actions.notes} onMakeStudent={makeStudent} student={studentOf(opened)} onViewStudent={(s) => { setOpenId(null); editStudent(s) }} notify={notify} />
+          <EnquiryCard r={opened} onStatus={actions.status} onNotes={actions.notes} onMakeStudent={makeStudent} onEdit={editEnquiry} student={studentOf(opened)} onViewStudent={(s) => { setOpenId(null); editStudent(s) }} notify={notify} />
+        </Drawer>
+      )}
+
+      {editing && (
+        <Drawer onClose={() => setEditing(null)} label={`Edit enquiry from ${editing.student_name}`}>
+          <EnquiryForm r={rows.find((x) => x.id === editing.id) || editing} slots={slots} busy={savingEnq} onSave={saveEnquiry} onCancel={() => setEditing(null)} />
         </Drawer>
       )}
 

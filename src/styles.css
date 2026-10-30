@@ -875,6 +875,10 @@ textarea.wz__input { resize: vertical; min-height: 0; font-size: 1rem; }
 .sform__sub.is-on { border-color: var(--ink); background: #FEF3C7; }
 .sform__sub input { position: absolute; opacity: 0; pointer-events: none; }
 .sform__sub:focus-within { outline: 3px solid var(--purple); outline-offset: 2px; }
+.eslots { display: grid; gap: 8px; }
+.eslots__day { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 8px; align-items: start; }
+.eslots__day b { font-size: .84rem; padding-top: 8px; }
+.sform .dp { margin-top: 4px; }
 .sform__acts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
 .pin-card { display: grid; gap: 12px; }
 .pin-card h2 { font-size: 1.3rem; }

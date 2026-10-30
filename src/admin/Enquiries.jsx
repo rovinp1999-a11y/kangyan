@@ -1,6 +1,8 @@
 // Enquiry list: cards or table, filters, notes, status, and the side panel.
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ENQUIRY_STATUSES, LESSON_TYPE_LABEL, ENQUIRER_LABEL, SUBJECTS } from '../../shared/constants.js'
+import { ENQUIRY_STATUSES, LESSON_TYPE_LABEL, ENQUIRER_LABEL, SUBJECTS, LEVEL_GROUPS, WEEKDAYS, FORMATS, formatRange } from '../../shared/constants.js'
+import { STRINGS } from '../i18n.jsx'
+import DayParts from '../components/DayParts.jsx'
 import {
   Icon, STATUS_META, FORMAT_LABEL, KIND_SHORT, SYSTEM_LABEL, StatusDot, draftMessage, downloadCsv, fullDate, initials, levelSystem, timeAgo, typeOf, useStored, waLink,
 } from './lib.jsx'
@@ -86,7 +88,7 @@ export function StatusMenu({ value, onChange, name }) {
 /* enquiries                                                           */
 /* ------------------------------------------------------------------ */
 
-export function EnquiryCard({ r, onStatus, onNotes, onMakeStudent, student, onViewStudent, notify }) {
+export function EnquiryCard({ r, onStatus, onNotes, onMakeStudent, onEdit, student, onViewStudent, notify }) {
   const [more, setMore] = useState(false)
   const [editing, setEditing] = useState(false)
   const [note, setNote] = useState(r.admin_notes || '')
@@ -204,6 +206,7 @@ export function EnquiryCard({ r, onStatus, onNotes, onMakeStudent, student, onVi
         {r.email && <a className="act" href={`mailto:${encodeURIComponent(r.email)}?subject=${subject}&body=${encodeURIComponent(draftMessage(r))}`}><Icon name="mail" />Email</a>}
         {r.phone && <a className="act" href={`tel:${r.phone}`}><Icon name="phone" />Call</a>}
         <button type="button" className="act" onClick={copy}><Icon name="copy" />{r.email ? 'Copy email' : 'Copy number'}</button>
+        {onEdit && <button type="button" className="act" onClick={() => onEdit(r)}><Icon name="edit" />Edit</button>}
 
       </footer>
     </article>
@@ -254,7 +257,7 @@ export function EnquiryTable({ rows, onOpen, studentOf = () => null }) {
 
 const VIEWS = [['cards', 'Cards', 'cards'], ['table', 'Table', 'list']]
 
-export function EnquiriesTab({ rows, actions, onOpen, onMakeStudent, studentOf = () => null, onViewStudent, notify, filter, setFilter }) {
+export function EnquiriesTab({ rows, actions, onOpen, onMakeStudent, onEdit, studentOf = () => null, onViewStudent, notify, filter, setFilter }) {
   const [q, setQ] = useState('')
   const [sort, setSort] = useState('newest')
   const [kind, setKind] = useState('all')
@@ -367,10 +370,101 @@ export function EnquiriesTab({ rows, actions, onOpen, onMakeStudent, studentOf =
         <EnquiryTable rows={shown} onOpen={onOpen} studentOf={studentOf} />
       ) : (
         <div className="enq-list">
-          {shown.map((r) => <EnquiryCard key={r.id} r={r} onStatus={actions.status} onNotes={actions.notes} onMakeStudent={onMakeStudent} student={studentOf(r)} onViewStudent={onViewStudent} notify={notify} />)}
+          {shown.map((r) => <EnquiryCard key={r.id} r={r} onStatus={actions.status} onNotes={actions.notes} onMakeStudent={onMakeStudent} onEdit={onEdit} student={studentOf(r)} onViewStudent={onViewStudent} notify={notify} />)}
         </div>
       )}
     </>
+  )
+}
+
+/** Correct what the enquirer filled in (typos, wrong level, different times…). */
+export function EnquiryForm({ r, slots, onSave, onCancel, busy }) {
+  const [f, setF] = useState(() => ({
+    name: r.student_name, enquirer: r.enquirer || '', phone: r.phone || '', email: r.email || '', level: r.level, school: r.school || '',
+    subjects: r.subjects, lessonType: r.lesson_type === 'group' ? 'group' : 'private', format: r.format || 'either', location: r.location || '',
+    preferredSlots: (r.preferred_slots || []).filter((p) => p.live).map((p) => p.id), customTimes: r.custom_times || [], message: r.message || '',
+  }))
+  const set = (k, v) => setF((x) => ({ ...x, [k]: v }))
+  const toggle = (k, v) => set(k, f[k].includes(v) ? f[k].filter((x) => x !== v) : [...f[k], v])
+  const days = WEEKDAYS.map((name, d) => ({ name, list: slots.filter((s) => s.weekday === d) })).filter((x) => x.list.length)
+  const en = STRINGS.en
+  return (
+    <form className="sform" onSubmit={(e) => { e.preventDefault(); onSave(f) }}>
+      <h2>Edit enquiry</h2>
+      <p className="sform__note">Changes replace what {r.student_name.split(/\s+/)[0]} sent in. Use it to fix typos or update their level, subjects or times.</p>
+      <div className="sform__row">
+        <label className="sform__f"><span>Student name</span><input value={f.name} onChange={(e) => set('name', e.target.value)} required minLength={2} maxLength={80} /></label>
+        <label className="sform__f"><span>Filled in by</span>
+          <select value={f.enquirer} onChange={(e) => set('enquirer', e.target.value)}>
+            <option value="">—</option><option value="parent">Parent</option><option value="student">Student</option>
+          </select>
+        </label>
+      </div>
+      <div className="sform__row">
+        <label className="sform__f"><span>WhatsApp</span><input type="tel" value={f.phone} onChange={(e) => set('phone', e.target.value)} placeholder="012-345 6789" /></label>
+        <label className="sform__f"><span>Email</span><input type="email" value={f.email} onChange={(e) => set('email', e.target.value)} /></label>
+      </div>
+      <div className="sform__row">
+        <label className="sform__f"><span>Level</span>
+          <select value={f.level} onChange={(e) => set('level', e.target.value)}>
+            {LEVEL_GROUPS.map((g) => <optgroup key={g.key} label={g.key.toUpperCase()}>{g.levels.map((l) => <option key={l} value={l}>{l}</option>)}</optgroup>)}
+          </select>
+        </label>
+        <label className="sform__f"><span>School</span><input value={f.school} onChange={(e) => set('school', e.target.value)} maxLength={160} /></label>
+      </div>
+      <div className="sform__f"><span>Subjects</span>
+        <div className="sform__subs">
+          {SUBJECTS.map((x) => (
+            <label key={x} className={`sform__sub ${f.subjects.includes(x) ? 'is-on' : ''}`}><input type="checkbox" checked={f.subjects.includes(x)} onChange={() => toggle('subjects', x)} />{x}</label>
+          ))}
+        </div>
+      </div>
+      <div className="sform__row">
+        <div className="sform__f"><span>Class</span>
+          <div className="kindpick" role="group" aria-label="Class type">
+            {['private', 'group'].map((k) => (
+              <button key={k} type="button" className={`kindpick__b kindpick__b--${k} ${f.lessonType === k ? 'is-on' : ''}`} aria-pressed={f.lessonType === k} onClick={() => set('lessonType', k)}>{KIND_SHORT[k]}</button>
+            ))}
+          </div>
+        </div>
+        <label className="sform__f"><span>Lessons</span>
+          <select value={f.format} onChange={(e) => set('format', e.target.value)}>
+            {FORMATS.map((x) => <option key={x.value} value={x.value}>{x.label}</option>)}
+          </select>
+        </label>
+      </div>
+      {f.format !== 'online' && (
+        <label className="sform__f"><span>Location</span><input value={f.location} onChange={(e) => set('location', e.target.value)} maxLength={200} placeholder="e.g. Cheras" /></label>
+      )}
+      {f.format === 'in-person' ? (
+        <div className="sform__f"><span>Days and times that suit them</span>
+          <DayParts value={f.customTimes} onChange={(v) => set('customTimes', v)} t={en.wz.times.custom} L={en.labels} />
+        </div>
+      ) : (
+        <div className="sform__f"><span>Preferred times (timetable slots)</span>
+          <div className="eslots">
+            {days.map(({ name, list }) => (
+              <div className="eslots__day" key={name}>
+                <b>{name.slice(0, 3)}</b>
+                <div className="sform__subs">
+                  {list.map((s) => (
+                    <label key={s.id} className={`sform__sub ${f.preferredSlots.includes(s.id) ? 'is-on' : ''}`} title={s.status === 'taken' ? 'Marked taken on the timetable' : undefined}>
+                      <input type="checkbox" checked={f.preferredSlots.includes(s.id)} onChange={() => toggle('preferredSlots', s.id)} />
+                      {formatRange(s.start, s.end)}{s.status === 'taken' ? ' · taken' : ''}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      <label className="sform__f"><span>Their message</span><textarea rows={3} value={f.message} onChange={(e) => set('message', e.target.value)} maxLength={2000} /></label>
+      <div className="sform__acts">
+        <button type="button" className="act" onClick={onCancel}>Cancel</button>
+        <button className="btn btn--accent" disabled={busy}>{busy ? 'Saving…' : 'Save changes'}</button>
+      </div>
+    </form>
   )
 }
 
