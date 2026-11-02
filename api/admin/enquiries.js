@@ -49,7 +49,7 @@ const COLUMNS = `id, created_at, student_name, email, phone, level, subjects, fo
 
 export default async function handler(req, res) {
   if (!allow(req, res, ['GET', 'PATCH'])) return
-  if (!requireAdmin(req, res)) return
+  if (!(await requireAdmin(req, res))) return
   const sql = getSql()
 
   try {

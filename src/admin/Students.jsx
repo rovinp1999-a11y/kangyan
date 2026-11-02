@@ -2,13 +2,13 @@
 // from the student page (move one lesson, absence, new regular time).
 import { useEffect, useMemo, useState } from 'react'
 import { LEVEL_GROUPS, SUBJECTS, WEEKDAYS, WEEKDAYS_SHORT, formatTime, slotLabel } from '../../shared/constants.js'
-import { dateLabel } from '../../shared/lessons.js'
+import { dateLabel, todayMY, firstOn } from '../../shared/lessons.js'
 import { STRINGS, shortRange } from '../i18n.jsx'
 import { Icon, KIND_SHORT, api, fullDate, timeAgo, waLink } from './lib.jsx'
 import { Drawer } from './Enquiries.jsx'
 
 const SITE = 'https://kangyan.work/student'
-const KIND_LABEL = { reschedule: 'Move one lesson', absence: 'Absence', change: 'New regular time' }
+const KIND_LABEL = { reschedule: 'Move one lesson', absence: 'Absence', change: 'This and all following' }
 const STATUS = { pending: 'Waiting', approved: 'Approved', rejected: 'Rejected', cancelled: 'Withdrawn' }
 const localPhone = (p) => (p?.startsWith('60') ? `0${p.slice(2)}` : p || '')
 const first = (n) => n.trim().split(/\s+/)[0]
@@ -40,8 +40,16 @@ export function pageMessage(s) {
 export function askedTime(r, lang = 'en') {
   if (!r.to_start) return r.to_label || ''
   const L = STRINGS[lang].labels
-  const day = r.to_date ? dateLabel(r.to_date, lang) : lang === 'zh' ? `每${L.weekdays[r.to_weekday ?? 0]}` : `every ${L.weekdays[r.to_weekday ?? 0]}`
-  return `${day} ${shortRange(r.to_start, r.to_end, lang)}`
+  const time = shortRange(r.to_start, r.to_end, lang)
+  if (r.kind === 'change') {
+    // "This and all following lessons" from a date.
+    const from = r.to_date && r.lesson_date ? (r.to_date < r.lesson_date ? r.to_date : r.lesson_date) : r.lesson_date
+    const start = from && firstOn(from, r.to_weekday ?? 0)
+    const wd = L.weekdays[r.to_weekday ?? 0]
+    if (lang === 'zh') return `每${wd} ${time}${start ? `（${dateLabel(start, 'zh')}起）` : ''}`
+    return `every ${wd} ${time}${start ? `, from ${dateLabel(start)}` : ''}`
+  }
+  return `${r.to_date ? dateLabel(r.to_date, lang) : ''} ${time}`.trim()
 }
 
 function decisionMessage(r, s, approved) {
@@ -131,7 +139,9 @@ function PinCard({ s, pin, onClose, notify }) {
 /** Form values for editing an existing student. */
 export const formFromStudent = (s) => ({
   ...BLANK, id: s.id, name: s.name, phone: localPhone(s.phone), level: s.level || '', lessonType: s.lesson_type, subjects: s.subjects || [],
-  lessons: (s.lessons || []).map(({ weekday, start, end }) => ({ weekday, start, end })), startDate: s.start_date || '', lang: s.lang, notes: s.notes || '',
+  // Keep from / until (set by "this and all following lessons"); lessons already over are left out.
+  lessons: (s.lessons || []).filter((l) => !l.until || l.until >= todayMY()).map(({ weekday, start, end, from, until }) => ({ weekday, start, end, ...(from ? { from } : {}), ...(until ? { until } : {}) })),
+  startDate: s.start_date || '', lang: s.lang, notes: s.notes || '',
 })
 
 const BLANK = { name: '', phone: '', level: '', lessonType: 'private', subjects: [], lessons: [NEW_LESSON], startDate: '', lang: 'en', notes: '' }
@@ -166,6 +176,8 @@ function WeeklyLessons({ value, onChange, slots, lessonType, own = [] }) {
             <button type="button" className="icon-btn icon-btn--danger" onClick={() => onChange(value.filter((_, j) => j !== i))} aria-label={`Remove lesson ${i + 1}`}><Icon name="x" /></button>
             <small className="wl__info">
               {mins / 60} hour{mins === 60 ? '' : 's'}
+              {l.from && l.from > todayMY() && ` · starts ${dateLabel(l.from)}`}
+              {l.until && ` · last lesson ${dateLabel(l.until)}`}
               {!slot ? ' · not one of your timetable slots'
                 : slot.status === 'taken' && !own.some((o) => o.weekday === l.weekday && o.start === l.start && o.end === l.end)
                   ? ' · ⚠ this timetable slot is already taken'
@@ -175,7 +187,7 @@ function WeeklyLessons({ value, onChange, slots, lessonType, own = [] }) {
         )
       })}
       {value.length < 7 && (
-        <button type="button" className="act wl__add" onClick={() => onChange([...value, value.length ? { ...value[value.length - 1], weekday: (value[value.length - 1].weekday + 2) % 7 } : NEW_LESSON])}>
+        <button type="button" className="act wl__add" onClick={() => { const last = value[value.length - 1]; onChange([...value, last ? { weekday: (last.weekday + 2) % 7, start: last.start, end: last.end } : NEW_LESSON]) }}>
           <Icon name="plus" />{value.length ? 'Add another weekly lesson' : 'Add a weekly lesson'}
         </button>
       )}
@@ -255,6 +267,7 @@ export function StudentsTab({ students, setStudents, requests, setRequests, slot
   const [pin, setPin] = useState(null) // { s, pin }
   const [told, setTold] = useState(null) // { r, s, approved } → WhatsApp link after a decision
   const [q, setQ] = useState('')
+  const [pins, setPins] = useState({}) // student id → PIN being shown (or null when it can't be)
   const fail = (e) => (e.unauthorized ? onAuthError() : notify(e.message, 'error'))
 
   useEffect(() => { if (prefill) { setForm({ ...BLANK, ...prefill }); clearPrefill() } }, [prefill, clearPrefill])
@@ -267,7 +280,7 @@ export function StudentsTab({ students, setStudents, requests, setRequests, slot
   const save = async (f) => {
     setBusy(true)
     try {
-      const body = { ...f, lessons: f.lessons.map(({ weekday, start, end }) => ({ weekday, start, end })), startDate: null }
+      const body = { ...f, lessons: f.lessons.map(({ weekday, start, end, from, until }) => ({ weekday, start, end, from, until })), startDate: null }
       if (f.id) {
         const { student, cleared } = await api('/api/admin/students', { method: 'POST', body: { action: 'update', ...body } })
         setStudents((list) => list.map((x) => (x.id === student.id ? student : x)))
@@ -297,6 +310,7 @@ export function StudentsTab({ students, setStudents, requests, setRequests, slot
     try {
       const { pin: p } = await api('/api/admin/students', { method: 'POST', body: { action: 'resetPin', id: s.id } })
       setPin({ s, pin: p })
+      setPins((m) => (s.id in m ? { ...m, [s.id]: p } : m))
     } catch (e) { fail(e) }
   }
   // Never logged in: make a fresh PIN and open WhatsApp with the full login details.
@@ -311,6 +325,13 @@ export function StudentsTab({ students, setStudents, requests, setRequests, slot
       win?.close()
       fail(e)
     }
+  }
+  const showPin = async (s) => {
+    if (s.id in pins) return setPins(({ [s.id]: _, ...rest }) => rest)
+    try {
+      const { pin: p } = await api('/api/admin/students', { method: 'POST', body: { action: 'showPin', id: s.id } })
+      setPins((m) => ({ ...m, [s.id]: p }))
+    } catch (e) { fail(e) }
   }
   const setActive = async (s, active) => {
     try {
@@ -384,13 +405,24 @@ export function StudentsTab({ students, setStudents, requests, setRequests, slot
                   </header>
                   <div className="scard__slots">
                     {(s.lessons || []).length
-                      ? s.lessons.map((l) => <p className="scard__slot" key={`${l.weekday}-${l.start}`}><Icon name="calendar" />Every {weeklyText(l)}</p>)
+                      ? s.lessons.filter((l) => !l.until || l.until >= todayMY()).map((l) => (
+                        <p className="scard__slot" key={`${l.weekday}-${l.start}-${l.from || ''}`}>
+                          <Icon name="calendar" />Every {weeklyText(l)}
+                          {(l.from && l.from > todayMY()) || l.until ? <small className="scard__range">{l.from && l.from > todayMY() ? `from ${dateLabel(l.from)}` : ''}{l.until ? ` until ${dateLabel(l.until)}` : ''}</small> : null}
+                        </p>
+                      ))
                       : <p className="scard__slot is-none"><Icon name="calendar" />No weekly lessons yet</p>}
                   </div>
                   <p className="scard__meta">{localPhone(s.phone)} · {s.last_login ? `last seen ${timeAgo(s.last_login)}` : 'not logged in yet'}{s.active ? '' : ' · deactivated'}</p>
                   {s.notes && <p className="scard__notes">{s.notes}</p>}
+                  {s.id in pins && (
+                    pins[s.id]
+                      ? <p className="scard__pin">PIN <b>{pins[s.id]}</b></p>
+                      : <p className="scard__pin is-none">This PIN was set before PINs could be viewed. Press New PIN to give them one you can see.</p>
+                  )}
                   <footer>
                     <button type="button" className="act" onClick={() => setForm(formFromStudent(s))}><Icon name="edit" />Edit</button>
+                    <button type="button" className="act" onClick={() => showPin(s)}><Icon name="key" />{s.id in pins ? 'Hide PIN' : 'Show PIN'}</button>
                     <button type="button" className="act" onClick={() => resetPin(s)}>New PIN</button>
                     {s.last_login
                       ? <a className="act act--wa" href={waLink(s.phone, pageMessage(s))} target="_blank" rel="noopener noreferrer" title="Opens WhatsApp with the page link and how to log in"><Icon name="chat" />WhatsApp</a>

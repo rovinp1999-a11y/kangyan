@@ -1,6 +1,7 @@
-// POST /api/admin/login { password } → { token, expiresAt }
+// POST /api/admin/login { password }                     → { token, expiresAt }
+// POST /api/admin/login { action: 'change', current, next } → new password (logged in only) → { token }
 // Failed attempts are counted per IP; after MAX_FAILS in WINDOW the IP must wait.
-import { checkPassword, issueToken } from '../_auth.js'
+import { checkPassword, issueToken, requireAdmin, setPassword } from '../_auth.js'
 import { getSql } from '../_db.js'
 import { allow, readBody, send, fail, clientIp } from '../_http.js'
 
@@ -9,7 +10,8 @@ const WINDOW_MIN = 15
 
 export default async function handler(req, res) {
   if (!allow(req, res, ['POST'])) return
-  const { password } = readBody(req)
+  const body = readBody(req)
+  const { password } = body
   const ip = clientIp(req)
   const sql = getSql()
 
@@ -24,12 +26,27 @@ export default async function handler(req, res) {
     // Small fixed delay blunts rapid guessing.
     await new Promise((r) => setTimeout(r, 400))
 
-    if (!checkPassword(password)) {
+    if (body.action === 'change') {
+      if (!(await requireAdmin(req, res))) return
+      if (!(await checkPassword(body.current))) {
+        await sql`INSERT INTO admin_login_attempts (ip) VALUES (${ip})`
+        // 403, not 401: the dashboard treats 401 as "logged out".
+        return fail(res, 403, 'Current password is wrong')
+      }
+      const next = typeof body.next === 'string' ? body.next : ''
+      if (next.length < 8) return fail(res, 400, 'Use at least 8 characters')
+      if (next.length > 200) return fail(res, 400, 'That password is too long')
+      await setPassword(next)
+      // Signing changed, so every other device is logged out; this one gets a fresh token.
+      return send(res, 200, { ok: true, ...(await issueToken()) })
+    }
+
+    if (!(await checkPassword(password))) {
       await sql`INSERT INTO admin_login_attempts (ip) VALUES (${ip})`
       return fail(res, 401, 'Wrong password')
     }
     await sql`DELETE FROM admin_login_attempts WHERE ip = ${ip} OR at < now() - interval '1 day'`
-    return send(res, 200, { ok: true, ...issueToken() })
+    return send(res, 200, { ok: true, ...(await issueToken()) })
   } catch (err) {
     console.error('[api/admin/login]', err)
     return fail(res, 500, 'Login is unavailable right now')

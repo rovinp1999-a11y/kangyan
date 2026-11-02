@@ -23,6 +23,46 @@ const savedTab = () => { try { const t = sessionStorage.getItem(TAB_KEY); return
 /* login                                                               */
 /* ------------------------------------------------------------------ */
 
+/** Change the admin password (signs out every other device). */
+function PasswordForm({ onDone, onCancel, notify }) {
+  const [cur, setCur] = useState('')
+  const [next, setNext] = useState('')
+  const [again, setAgain] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const submit = async (e) => {
+    e.preventDefault()
+    if (next.length < 8) return setErr('Use at least 8 characters.')
+    if (next !== again) return setErr('The new passwords don’t match.')
+    setBusy(true)
+    setErr('')
+    try {
+      const { token } = await api('/api/admin/login', { method: 'POST', body: { action: 'change', current: cur, next } })
+      setToken(token)
+      notify('Password changed. Other devices are logged out.')
+      onDone()
+    } catch (e2) {
+      setErr(e2.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <form className="sform" onSubmit={submit}>
+      <h2>Change admin password</h2>
+      <p className="sform__note">You'll stay logged in here. Any other phone or computer logged in to the admin will need the new password.</p>
+      <label className="sform__f"><span>Current password</span><input type="password" autoComplete="current-password" value={cur} onChange={(e) => setCur(e.target.value)} required /></label>
+      <label className="sform__f"><span>New password (at least 8 characters)</span><input type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} required minLength={8} /></label>
+      <label className="sform__f"><span>New password again</span><input type="password" autoComplete="new-password" value={again} onChange={(e) => setAgain(e.target.value)} required /></label>
+      {err && <p className="form__note is-error">{err}</p>}
+      <div className="sform__acts">
+        <button type="button" className="act" onClick={onCancel}>Cancel</button>
+        <button className="btn btn--accent" disabled={busy}>{busy ? 'Saving…' : 'Change password'}</button>
+      </div>
+    </form>
+  )
+}
+
 function Login({ onDone }) {
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
@@ -75,6 +115,7 @@ export default function AdminPage() {
   const [requests, setRequests] = useState(null)
   const [prefill, setPrefill] = useState(null)
   const [editing, setEditing] = useState(null) // enquiry being corrected
+  const [pwOpen, setPwOpen] = useState(false)
   const [savingEnq, setSavingEnq] = useState(false)
   const [loadErr, setLoadErr] = useState('')
   const [spinning, setSpinning] = useState(false)
@@ -270,6 +311,9 @@ export default function AdminPage() {
             <button type="button" className={`icon-btn ${spinning ? 'is-spinning' : ''}`} onClick={refresh} aria-label="Refresh" title="Refresh">
               <Icon name="refresh" />
             </button>
+            <button type="button" className="icon-btn" onClick={() => setPwOpen(true)} aria-label="Change password" title="Change password">
+              <Icon name="key" />
+            </button>
             <button type="button" className="icon-btn" onClick={logout} aria-label="Log out" title="Log out">
               <Icon name="logout" />
             </button>
@@ -309,6 +353,12 @@ export default function AdminPage() {
       {opened && (
         <Drawer onClose={closeDrawer} label={`Enquiry from ${opened.student_name}`}>
           <EnquiryCard r={opened} onStatus={actions.status} onNotes={actions.notes} onMakeStudent={makeStudent} onEdit={editEnquiry} student={studentOf(opened)} onViewStudent={(s) => { setOpenId(null); editStudent(s) }} notify={notify} />
+        </Drawer>
+      )}
+
+      {pwOpen && (
+        <Drawer onClose={() => setPwOpen(false)} label="Change admin password">
+          <PasswordForm notify={notify} onDone={() => setPwOpen(false)} onCancel={() => setPwOpen(false)} />
         </Drawer>
       )}
 

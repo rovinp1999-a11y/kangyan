@@ -1,5 +1,5 @@
 // Student accounts: WhatsApp number + 6-digit PIN, and a signed session token.
-import { createHmac, randomBytes, randomInt, scryptSync, timingSafeEqual } from 'node:crypto'
+import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, randomInt, scryptSync, timingSafeEqual } from 'node:crypto'
 import { getSql } from './_db.js'
 import { fail } from './_http.js'
 
@@ -27,6 +27,37 @@ export function checkPin(pin, stored) {
   const a = scryptSync(pin, salt, 32)
   const b = Buffer.from(hash, 'hex')
   return a.length === b.length && timingSafeEqual(a, b)
+}
+
+/**
+ * PINs are also kept encrypted (AES-256-GCM) so the tutor can look one up in the admin.
+ * The key comes from ADMIN_PASSWORD in the Vercel settings, which stays the server's
+ * secret even after the admin password is changed from the dashboard.
+ */
+function pinKey() {
+  const p = process.env.ADMIN_PASSWORD
+  if (!p) throw new Error('ADMIN_PASSWORD is not set')
+  return createHash('sha256').update(`${p}|student-pin-key`).digest()
+}
+
+export function encryptPin(pin) {
+  const iv = randomBytes(12)
+  const c = createCipheriv('aes-256-gcm', pinKey(), iv)
+  const data = Buffer.concat([c.update(pin, 'utf8'), c.final()])
+  return [iv, c.getAuthTag(), data].map((b) => b.toString('base64')).join('.')
+}
+
+/** The PIN, or null if it was set before PINs were kept (or the key changed). */
+export function decryptPin(enc) {
+  try {
+    const [iv, tag, data] = String(enc || '').split('.').map((x) => Buffer.from(x, 'base64'))
+    if (!iv?.length || !tag?.length || !data?.length) return null
+    const d = createDecipheriv('aes-256-gcm', pinKey(), iv)
+    d.setAuthTag(tag)
+    return Buffer.concat([d.update(data), d.final()]).toString('utf8')
+  } catch {
+    return null
+  }
 }
 
 function secret() {

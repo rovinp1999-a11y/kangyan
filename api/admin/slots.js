@@ -12,7 +12,7 @@ const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/
 
 export default async function handler(req, res) {
   if (!allow(req, res, ['POST', 'PATCH', 'DELETE'])) return
-  if (!requireAdmin(req, res)) return
+  if (!(await requireAdmin(req, res))) return
   const sql = getSql()
   const b = readBody(req)
 

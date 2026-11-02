@@ -104,6 +104,14 @@ const statements = [
      FROM availability_slots a WHERE a.id = s.slot_id AND s.lessons = '[]'::jsonb`,
   // which weekly lesson a request is about: { weekday, start, end }
   `ALTER TABLE student_requests ADD COLUMN IF NOT EXISTS from_lesson JSONB`,
+  // the tutor can view a student's PIN (stored encrypted; the hash is still what logs them in)
+  `ALTER TABLE students ADD COLUMN IF NOT EXISTS pin_enc TEXT`,
+  // admin password changed from the dashboard (scrypt hash); falls back to ADMIN_PASSWORD when empty
+  `CREATE TABLE IF NOT EXISTS admin_settings (
+     key        TEXT PRIMARY KEY,
+     value      TEXT NOT NULL,
+     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+   )`,
   // students can ask for any time, not only timetable slots
   `ALTER TABLE student_requests ADD COLUMN IF NOT EXISTS to_weekday SMALLINT`,
   `ALTER TABLE student_requests ADD COLUMN IF NOT EXISTS to_start TEXT`,

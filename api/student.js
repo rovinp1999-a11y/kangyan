@@ -7,9 +7,9 @@
 // Error `code`s let the page show its own translated message.
 import { getSql } from './_db.js'
 import { allow, readBody, send, fail, clientIp, isDbId } from './_http.js'
-import { normalPhone, isPin, checkPin, hashPin, issueStudentToken, requireStudent } from './_students.js'
+import { normalPhone, isPin, checkPin, hashPin, encryptPin, issueStudentToken, requireStudent } from './_students.js'
 import { notify } from './_notify.js'
-import { NOTICE_HOURS, WEEKS_AHEAD, upcomingDates, hoursUntil, todayMY, isDate, weekdayOf, startsAt, dateLabel, addDays } from '../shared/lessons.js'
+import { NOTICE_HOURS, WEEKS_AHEAD, upcomingDates, hoursUntil, todayMY, isDate, weekdayOf, startsAt, dateLabel, addDays, covers } from '../shared/lessons.js'
 
 const MAX_FAILS = 8
 const WINDOW_MIN = 15
@@ -62,7 +62,7 @@ async function occupied(sql, me, dates) {
   for (const o of others) {
     for (const l of o.lessons || []) {
       for (const date of dates) {
-        if (weekdayOf(date) !== l.weekday || (o.start_day && date < o.start_day)) continue
+        if (!covers(l, date) || (o.start_day && date < o.start_day)) continue
         const gone = reqs.some((r) => r.student_id === o.id && r.status === 'approved' && r.kind !== 'change' && r.lesson_date === date && (!r.from_lesson || r.from_lesson.start === l.start))
         if (!gone) out.push({ date, start: l.start, end: l.end })
       }
@@ -74,7 +74,9 @@ async function occupied(sql, me, dates) {
 
 /** Everything the student page shows. */
 async function state(sql, s) {
-  const weekly = (Array.isArray(s.lessons) ? s.lessons : []).slice().sort((a, b) => a.weekday - b.weekday || a.start.localeCompare(b.start))
+  // Weekly lessons that are still going (a lesson that ended for "this and all following" drops out).
+  const weekly = (Array.isArray(s.lessons) ? s.lessons : []).filter((w) => !w.until || w.until >= todayMY())
+    .slice().sort((a, b) => a.weekday - b.weekday || a.start.localeCompare(b.start))
   const requests = await sql.query(`SELECT ${REQ_COLUMNS} FROM student_requests WHERE student_id = $1 ORDER BY created_at DESC LIMIT 60`, [s.id])
   const [{ start_day: startDay }] = await sql`SELECT to_char(start_date, 'YYYY-MM-DD') AS start_day FROM students WHERE id = ${s.id}`
 
@@ -94,7 +96,7 @@ async function state(sql, s) {
 
   return {
     student: { name: s.name, level: s.level, lessonType: s.lesson_type, subjects: s.subjects, lang: s.lang },
-    weekly: weekly.map((w) => ({ weekday: w.weekday, start: w.start, end: w.end })),
+    weekly: weekly.map((w) => ({ weekday: w.weekday, start: w.start, end: w.end, from: w.from || null, until: w.until || null })),
     lessons, requests, noticeHours: NOTICE_HOURS, weeksAhead: WEEKS_AHEAD, today, lastDay: dates[dates.length - 1], startDay: startDay || null,
     // Other confirmed students' lessons, shown only as "occupied" (never who).
     busy: await occupied(sql, s.id, dates),
@@ -127,15 +129,26 @@ async function createRequest(res, sql, s, b) {
     to = { date: b.toDate, weekday: weekdayOf(b.toDate), start: b.toStart, end: b.toEnd }
   }
   if (kind === 'change') {
-    fromLesson = st.weekly.find((w) => w.weekday === Number(b.fromWeekday) && w.start === b.fromStart) || (st.weekly.length === 1 ? st.weekly[0] : null)
-    if (st.weekly.length && !fromLesson) return fail(res, 400, 'Pick which lesson to change', 'invalid')
-    const weekday = Number(b.toWeekday)
+    // "This and all following lessons": starts from one lesson (lessonDate), or from the next one.
+    if (b.lessonDate) {
+      const lesson = st.lessons.find((l) => l.date === b.lessonDate && (!b.lessonStart || l.start === b.lessonStart))
+      if (!lesson) return fail(res, 400, 'That lesson is not coming up', 'invalid')
+      lessonDate = lesson.date
+      fromLesson = { weekday: lesson.weekday, start: lesson.start, end: lesson.end }
+    } else {
+      fromLesson = st.weekly.find((w) => w.weekday === Number(b.fromWeekday) && w.start === b.fromStart) || (st.weekly.length === 1 ? st.weekly[0] : null)
+      if (st.weekly.length && !fromLesson) return fail(res, 400, 'Pick which lesson to change', 'invalid')
+      lessonDate = fromLesson ? st.lessons.find((l) => l.weekday === fromLesson.weekday && l.start === fromLesson.start)?.date ?? null : null
+    }
+    // A date for the first moved lesson (from the calendar), or just a weekday.
+    const startDate = isDate(b.toDate) && b.toDate >= st.today && b.toDate <= st.lastDay ? b.toDate : null
+    const weekday = startDate ? weekdayOf(startDate) : Number(b.toWeekday)
     if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6 || !okTimes(b.toStart, b.toEnd)) return fail(res, 400, 'Pick a day and time', 'times')
     if (fromLesson && weekday === fromLesson.weekday && b.toStart === fromLesson.start && b.toEnd === fromLesson.end) return fail(res, 400, 'That is the same time', 'same')
     if (st.requests.some((r) => r.kind === 'change' && r.status === 'pending' && sameLesson(r.from_lesson, fromLesson))) {
       return fail(res, 409, 'You already asked to change this lesson', 'duplicate')
     }
-    to = { weekday, start: b.toStart, end: b.toEnd }
+    to = { weekday, start: b.toStart, end: b.toEnd, ...(startDate ? { date: startDate } : {}) }
   }
 
   // Link to the timetable slot with the same day and times, if there is one.
@@ -144,7 +157,7 @@ async function createRequest(res, sql, s, b) {
     const [slot] = await sql.query(`SELECT id FROM availability_slots WHERE weekday = $1 AND start_time = $2::time AND end_time = $3::time`, [to.weekday, to.start, to.end])
     slotId = slot?.id ?? null
   }
-  const toLabel = to ? `${to.date ? dateLabel(to.date) : `Every ${DAY_NAMES[to.weekday]}`} ${span(to.start, to.end)}` : null
+  const toLabel = to ? `${kind === 'reschedule' ? dateLabel(to.date) : `Every ${DAY_NAMES[to.weekday]}`} ${span(to.start, to.end)}` : null
   const [row] = await sql`
     INSERT INTO student_requests (student_id, kind, lesson_date, from_lesson, to_slot_id, to_date, to_weekday, to_start, to_end, to_label, recording, note)
     VALUES (${s.id}, ${kind}, ${lessonDate}, ${fromLesson ? JSON.stringify(fromLesson) : null}::jsonb, ${slotId}, ${to?.date ?? null}, ${to?.weekday ?? null},
@@ -154,7 +167,7 @@ async function createRequest(res, sql, s, b) {
   const what = {
     reschedule: `Move the lesson on ${dateLabel(lessonDate)} ${span(fromLesson.start, fromLesson.end)} to ${toLabel}`,
     absence: `Can't make the lesson on ${dateLabel(lessonDate)} ${span(fromLesson.start, fromLesson.end)}${b.recording === true ? ' (would like the recording)' : ''}`,
-    change: `Change the regular lesson${fromLesson ? ` on ${DAY_NAMES[fromLesson.weekday]} ${span(fromLesson.start, fromLesson.end)}` : ''} to ${toLabel}`,
+    change: `From ${lessonDate ? dateLabel(lessonDate) : 'now'} on, change the weekly lesson${fromLesson ? ` (${DAY_NAMES[fromLesson.weekday]} ${span(fromLesson.start, fromLesson.end)})` : ''} to ${toLabel}`,
   }[kind]
   await notify(`Kangyan: ${s.name} — ${kind === 'absence' ? 'absence' : kind === 'change' ? 'new regular time' : 'reschedule'} request`,
     `${s.name} (${s.level || ''}, ${s.lesson_type === 'group' ? 'group' : '1-to-1'})\n${what}${note ? `\nNote: ${note}` : ''}\n\nAccept, decline or change the time: https://kangyan.work/admin`)
@@ -186,7 +199,7 @@ export default async function handler(req, res) {
       // Siblings on one number are told apart by PIN, so it must differ from theirs.
       const sibs = await sql`SELECT pin_hash FROM students WHERE phone = ${s.phone} AND id <> ${s.id}`
       if (sibs.some((x) => checkPin(b.next, x.pin_hash))) return fail(res, 409, 'Choose a different PIN', 'pinTaken')
-      const [u] = await sql`UPDATE students SET pin_hash = ${hashPin(b.next)} WHERE id = ${s.id} RETURNING *`
+      const [u] = await sql`UPDATE students SET pin_hash = ${hashPin(b.next)}, pin_enc = ${encryptPin(b.next)} WHERE id = ${s.id} RETURNING *`
       return send(res, 200, { ok: true, token: issueStudentToken(u) })
     }
     return fail(res, 400, 'Unknown action', 'invalid')

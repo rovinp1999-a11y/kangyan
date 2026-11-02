@@ -22,19 +22,31 @@ export const startsAt = (date, hhmm) => parse(date) + (Number(hhmm.slice(0, 2)) 
 export const hoursUntil = (date, hhmm, now = Date.now()) => (startsAt(date, hhmm) - now) / 3600000
 export const isDate = (v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && iso(parse(v)) === v
 
-/** The next lesson dates for a weekly slot that haven't started yet. */
+/**
+ * Does this weekly lesson happen on `date`? A weekly lesson can start (`from`) or stop
+ * (`until`) on a date, which is how "this and all following lessons" changes are kept.
+ */
+export const covers = (l, date) => l && weekdayOf(date) === l.weekday && (!l.from || date >= l.from) && (!l.until || date <= l.until)
+
+/** The next lesson dates for a weekly slot or lesson that haven't started yet (respects its from / until). */
 export function upcomingDates(slot, { from, weeks = WEEKS_AHEAD, now = Date.now() } = {}) {
   if (!slot) return []
   const today = todayMY(now)
-  const startFrom = from && from > today ? from : today
+  let startFrom = from && from > today ? from : today
+  if (slot.from && slot.from > startFrom) startFrom = slot.from
   const first = addDays(startFrom, (slot.weekday - weekdayOf(startFrom) + 7) % 7)
   const out = []
   for (let i = 0; i < weeks; i++) {
     const d = addDays(first, i * 7)
+    if (slot.until && d > slot.until) break
+    if (d >= addDays(today, weeks * 7)) break // stay inside the window even when the lesson starts later
     if (startsAt(d, slot.start) > now) out.push(d)
   }
   return out
 }
+
+/** First date on or after `date` that falls on `weekday` (0 = Monday). */
+export const firstOn = (date, weekday) => addDays(date, (weekday - weekdayOf(date) + 7) % 7)
 
 /** Readable date: 'Tue 3 Nov' / '11月3日（周二）'. */
 export function dateLabel(date, lang = 'en') {
