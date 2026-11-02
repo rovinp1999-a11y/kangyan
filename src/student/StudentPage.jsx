@@ -311,6 +311,80 @@ function CalDetail({ ev, st, T, L, lang, onSheet, onCancel }) {
   )
 }
 
+/** Subscribe their phone calendar to their lessons (updates by itself, reminds 1 hour before). */
+function CalendarLink({ T, token, notify }) {
+  const [open, setOpen] = useState(false)
+  if (!token) return null
+  const host = window.location.host
+  const https = `${window.location.protocol}//${host}/cal/${token}.ics`
+  const webcal = `webcal://${host}/cal/${token}.ics`
+  const copy = async () => { try { await navigator.clipboard.writeText(https); notify(T.calLink.copied) } catch { notify(https) } }
+  return (
+    <div className="stu-callink">
+      <button type="button" className="act" onClick={() => setOpen((o) => !o)} aria-expanded={open}>📅 {T.calLink.btn}</button>
+      {open && (
+        <div className="stu-callink__box">
+          <p>{T.calLink.p}</p>
+          <div className="stu-detail__acts">
+            <a className="act act--main" href={webcal}>{T.calLink.apple}</a>
+            <a className="act" href={`https://calendar.google.com/calendar/r?cid=${encodeURIComponent(webcal)}`} target="_blank" rel="noopener noreferrer">{T.calLink.google}</a>
+            <button type="button" className="act" onClick={copy}>{T.calLink.copy}</button>
+          </div>
+          <p className="stu-small">{T.calLink.note}</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+const FEE_MONTH = (m, lang) => (lang === 'zh' ? `${m.slice(0, 4)}年${Number(m.slice(5))}月` : new Date(`${m}-15T00:00:00Z`).toLocaleDateString('en-MY', { month: 'long', year: 'numeric', timeZone: 'UTC' }))
+
+function Fees({ st, T, lang }) {
+  if (!st.fees?.length) return null
+  return (
+    <section className="stu-card stu-fees">
+      <h2>{T.fees.h}</h2>
+      <ul>
+        {st.fees.map((f) => (
+          <li key={f.month} className={`stu-fee stu-fee--${f.state}`}>
+            <div>
+              <b>{FEE_MONTH(f.month, lang)}</b>
+              <span>{f.amount == null ? T.fees.tbc : `RM${f.amount}`}</span>
+            </div>
+            <span className={`stu-chip stu-chip--fee-${f.state}`}>{T.fees.state[f.state]}</span>
+          </li>
+        ))}
+      </ul>
+      <p className="stu-small">{T.fees.note}</p>
+    </section>
+  )
+}
+
+function History({ st, T, L, lang }) {
+  const p = st.progress
+  return (
+    <section className="stu-card stu-hist">
+      <h2>{T.hist.h}</h2>
+      {p.total > 0 && (
+        <div className="stu-hist__month">
+          <span>{T.hist.month(p.done, p.total)}</span>
+          <div className="stu-hist__bar" role="img" aria-label={T.hist.month(p.done, p.total)}><i style={{ width: `${(p.done / p.total) * 100}%` }} /></div>
+        </div>
+      )}
+      {st.history.length ? (
+        <ul>
+          {st.history.slice(0, 12).map((o) => (
+            <li key={`${o.date}-${o.start}`}>
+              <span>{dateLabel(o.date, lang)} · {shortRange(o.start, o.end, lang)}</span>
+              <span className={`stu-chip stu-chip--h-${o.status}`}>{T.hist.state[o.status]}{o.movedFrom ? ` · ${T.hist.movedFrom(dateLabel(o.movedFrom, lang))}` : ''}</span>
+            </li>
+          ))}
+        </ul>
+      ) : <p className="stu-muted">{T.hist.none}</p>}
+    </section>
+  )
+}
+
 function PinForm({ T, token, onToken, notify, open, setOpen }) {
   const [cur, setCur] = useState('')
   const [next, setNext] = useState('')
@@ -458,6 +532,15 @@ export default function StudentPage() {
               </div>
             </section>
 
+            {st.announcements?.map((a) => (
+              <section key={a.id} className="stu-news" role="note">
+                <b>📢 {a.title}</b>
+                {a.body && <p>{a.body}</p>}
+              </section>
+            ))}
+
+            <Fees st={st} T={T} lang={lang} />
+
             <section className="stu-card stu-cal">
               <div className="stu-cal__head">
                 <h2>{T.cal.title}</h2>
@@ -465,6 +548,7 @@ export default function StudentPage() {
                   {['mine', 'pending', 'busy'].map((k) => <li key={k}><i className={`wc__dot wc__dot--${k}`} />{T.cal.legend[k]}</li>)}
                 </ul>
               </div>
+              <CalendarLink T={T} token={st.calendarToken} notify={notify} />
               {(() => {
                 const days = studentWeek(st, week, T, L, lang)
                 const picked = sel?.startsWith('ask:')
@@ -484,6 +568,8 @@ export default function StudentPage() {
                 )
               })()}
             </section>
+
+            <History st={st} T={T} L={L} lang={lang} />
 
             <section className="stu-card">
               <h2>{T.requests}</h2>

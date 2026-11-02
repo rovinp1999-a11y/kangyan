@@ -4,17 +4,20 @@
 //   POST { action: 'request', kind, ... }  → ask to move one lesson, report an absence or change the regular time
 //   POST { action: 'cancel', id }          → withdraw a pending request
 //   POST { action: 'pin', current, next }  → change PIN (returns a fresh token)
+//   GET ?feed=<token>                      → their lessons as a calendar feed (.ics) for phone calendars
 // Error `code`s let the page show its own translated message.
 import { getSql } from './_db.js'
 import { allow, readBody, send, fail, clientIp, isDbId } from './_http.js'
 import { normalPhone, isPin, checkPin, hashPin, encryptPin, issueStudentToken, requireStudent } from './_students.js'
 import { notify } from './_notify.js'
+import { randomBytes } from 'node:crypto'
+import { occurrences, monthRange, monthOf, suggestedFee, monthProgress, feeState } from '../shared/schedule.js'
 import { NOTICE_HOURS, WEEKS_AHEAD, upcomingDates, hoursUntil, todayMY, isDate, weekdayOf, startsAt, dateLabel, addDays, covers } from '../shared/lessons.js'
 
 const MAX_FAILS = 8
 const WINDOW_MIN = 15
 const REQ_COLUMNS = `id, created_at, kind, to_char(lesson_date, 'YYYY-MM-DD') AS lesson_date, from_lesson, to_slot_id,
-  to_char(to_date, 'YYYY-MM-DD') AS to_date, to_weekday, to_start, to_end, to_label, recording, note, status, reply, decided_at`
+  to_char(to_date, 'YYYY-MM-DD') AS to_date, to_weekday, to_start, to_end, to_label, recording, note, status, reply, decided_at, by_tutor`
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/
 const MAX_LESSON_MIN = 4 * 60
 const toMin = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
@@ -72,6 +75,44 @@ async function occupied(sql, me, dates) {
   return out
 }
 
+/** The student's private calendar-feed token (made on first use). */
+async function calendarToken(sql, s) {
+  if (s.cal_token) return s.cal_token
+  const token = randomBytes(18).toString('base64url')
+  await sql`UPDATE students SET cal_token = ${token} WHERE id = ${s.id} AND cal_token IS NULL`
+  const [row] = await sql`SELECT cal_token FROM students WHERE id = ${s.id}`
+  return row.cal_token
+}
+
+/** Lessons as an iCalendar feed: 4 weeks back to 12 ahead, moves applied, 1-hour reminder. */
+async function feed(res, sql, token) {
+  const [s] = token && /^[A-Za-z0-9_-]{16,40}$/.test(token)
+    ? await sql`SELECT *, to_char(start_date, 'YYYY-MM-DD') AS start_day FROM students WHERE cal_token = ${token} AND active` : []
+  if (!s) { res.status(404).setHeader('Content-Type', 'text/plain'); return res.send('Not found') }
+  const requests = await sql.query(`SELECT ${REQ_COLUMNS} FROM student_requests WHERE student_id = $1 AND status = 'approved'`, [s.id])
+  const today = todayMY()
+  const list = occurrences({ ...s, start_date: s.start_day }, requests, addDays(today, -28), addDays(today, 84))
+    .filter((o) => o.status === 'lesson' || o.status === 'absent')
+  const stamp = (date, hhmm) => new Date(startsAt(date, hhmm)).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')
+  const esc = (t) => String(t).replace(/[\\;,]/g, (c) => `\\${c}`).replace(/\n/g, '\\n')
+  const subj = (s.subjects || []).join(', ') || 'Tuition'
+  const kind = s.lesson_type === 'group' ? 'Group class' : '1-to-1'
+  const now = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')
+  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Kangyan//Lessons//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
+    `X-WR-CALNAME:${esc(`Kangyan lessons · ${s.name}`)}`, 'X-WR-TIMEZONE:Asia/Kuala_Lumpur', 'REFRESH-INTERVAL;VALUE=DURATION:PT6H', 'X-PUBLISHED-TTL:PT6H']
+  for (const o of list) {
+    lines.push('BEGIN:VEVENT', `UID:${s.id}-${o.date}-${o.start.replace(':', '')}@kangyan.work`, `DTSTAMP:${now}`,
+      `DTSTART:${stamp(o.date, o.start)}`, `DTEND:${stamp(o.date, o.end)}`,
+      `SUMMARY:${esc(`${subj} · ${kind}${o.status === 'absent' ? ' (absent)' : ''}`)}`,
+      `DESCRIPTION:${esc('Kangyan tuition. Changes: https://kangyan.work/student')}`,
+      'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${esc(`${subj} lesson in 1 hour`)}`, 'TRIGGER:-PT1H', 'END:VALARM', 'END:VEVENT')
+  }
+  lines.push('END:VCALENDAR')
+  res.setHeader('Content-Type', 'text/calendar; charset=utf-8')
+  res.setHeader('Cache-Control', 'no-store')
+  return res.status(200).send(lines.join('\r\n') + '\r\n')
+}
+
 /** Everything the student page shows. */
 async function state(sql, s) {
   // Weekly lessons that are still going (a lesson that ended for "this and all following" drops out).
@@ -94,8 +135,34 @@ async function state(sql, s) {
   const monday = addDays(today, -weekdayOf(today))
   const dates = Array.from({ length: WEEKS_AHEAD * 7 }, (_, i) => addDays(monday, i))
 
+  // Lesson history (last 8 weeks, but not before the month they were added) and this month's count.
+  const stu = { ...s, start_date: startDay || null }
+  const joinedDay = new Date(Date.parse(s.created_at) + 8 * 3600e3).toISOString().slice(0, 10)
+  const historyFrom = [addDays(today, -56), `${joinedDay.slice(0, 7)}-01`].sort().pop()
+  const history = occurrences(stu, requests, historyFrom, today)
+    .filter((o) => startsAt(o.date, o.start) <= Date.now())
+    .reverse()
+    .map(({ date, start, end, status, movedFrom }) => ({ date, start, end, status, movedFrom: movedFrom || null }))
+
+  // Fees: this month and the two before (only months since they joined).
+  const joined = monthOf(joinedDay)
+  const months = [0, 1, 2].map((i) => monthOf(addDays(`${monthOf(today)}-01`, -i * 28))).filter((m, i, a) => a.indexOf(m) === i && m >= joined)
+  const saved = await sql`SELECT month, amount, paid FROM student_fees WHERE student_id = ${s.id} AND month = ANY(${months})`
+  const fees = months.map((month) => {
+    const row = saved.find((x) => x.month === month)
+    const amount = row?.amount ?? suggestedFee(stu, requests, month)
+    return { month, amount, state: feeState(month, row?.paid) }
+  }).filter((f, i) => i === 0 || f.state !== 'paid') // older months only while unpaid
+
+  const news = await sql`
+    SELECT id, created_at, title, body FROM announcements
+    WHERE (until IS NULL OR until >= ${today}::date)
+      AND (audience = 'all' OR audience = ${s.lesson_type} OR (audience = 'student' AND student_id = ${s.id}))
+    ORDER BY created_at DESC LIMIT 5`
+
   return {
     student: { name: s.name, level: s.level, lessonType: s.lesson_type, subjects: s.subjects, lang: s.lang },
+    history, progress: monthProgress(stu, requests), fees, announcements: news, calendarToken: await calendarToken(sql, s),
     weekly: weekly.map((w) => ({ weekday: w.weekday, start: w.start, end: w.end, from: w.from || null, until: w.until || null })),
     lessons, requests, noticeHours: NOTICE_HOURS, weeksAhead: WEEKS_AHEAD, today, lastDay: dates[dates.length - 1], startDay: startDay || null,
     // Other confirmed students' lessons, shown only as "occupied" (never who).
@@ -179,6 +246,7 @@ export default async function handler(req, res) {
   const sql = getSql()
   const b = req.method === 'POST' ? readBody(req) : {}
   try {
+    if (req.method === 'GET' && req.query?.feed) return await feed(res, sql, String(req.query.feed))
     if (b.action === 'login') return await login(req, res, sql, b)
 
     const s = await requireStudent(req, res)

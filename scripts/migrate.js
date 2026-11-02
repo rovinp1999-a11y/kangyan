@@ -112,6 +112,34 @@ const statements = [
      value      TEXT NOT NULL,
      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
    )`,
+  // student page extras: fees per month, announcements, phone-calendar feed, 1-to-1 hourly rate
+  `ALTER TABLE students ADD COLUMN IF NOT EXISTS hourly_rate INTEGER`,
+  `ALTER TABLE students ADD COLUMN IF NOT EXISTS cal_token TEXT`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS students_cal_token_idx ON students (cal_token) WHERE cal_token IS NOT NULL`,
+  `ALTER TABLE student_requests ADD COLUMN IF NOT EXISTS by_tutor BOOLEAN NOT NULL DEFAULT false`,
+  `UPDATE student_requests SET by_tutor = true WHERE reply = 'Changed by your tutor' AND NOT by_tutor`,
+  `CREATE TABLE IF NOT EXISTS student_fees (
+     student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+     month      TEXT NOT NULL CHECK (month ~ '^[0-9]{4}-[0-9]{2}$'),
+     amount     INTEGER CHECK (amount >= 0),
+     paid       BOOLEAN NOT NULL DEFAULT false,
+     paid_at    TIMESTAMPTZ,
+     note       TEXT,
+     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+     PRIMARY KEY (student_id, month)
+   )`,
+  // the month check must not rely on backslashes inside this template string
+  `ALTER TABLE student_fees DROP CONSTRAINT IF EXISTS student_fees_month_check`,
+  `ALTER TABLE student_fees ADD CONSTRAINT student_fees_month_check CHECK (month ~ '^[0-9]{4}-[0-9]{2}$')`,
+  `CREATE TABLE IF NOT EXISTS announcements (
+     id         SERIAL PRIMARY KEY,
+     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+     title      TEXT NOT NULL,
+     body       TEXT,
+     audience   TEXT NOT NULL DEFAULT 'all' CHECK (audience IN ('all','private','group','student')),
+     student_id INTEGER REFERENCES students(id) ON DELETE CASCADE,
+     until      DATE
+   )`,
   // students can ask for any time, not only timetable slots
   `ALTER TABLE student_requests ADD COLUMN IF NOT EXISTS to_weekday SMALLINT`,
   `ALTER TABLE student_requests ADD COLUMN IF NOT EXISTS to_start TEXT`,

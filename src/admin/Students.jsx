@@ -6,6 +6,7 @@ import { dateLabel, todayMY, firstOn } from '../../shared/lessons.js'
 import { STRINGS, shortRange } from '../i18n.jsx'
 import { Icon, KIND_SHORT, api, fullDate, timeAgo, waLink } from './lib.jsx'
 import { Drawer } from './Enquiries.jsx'
+import { fill } from './templates.js'
 
 const SITE = 'https://kangyan.work/student'
 const KIND_LABEL = { reschedule: 'Move one lesson', absence: 'Absence', change: 'This and all following' }
@@ -20,20 +21,12 @@ const TIMES = Array.from({ length: 31 }, (_, i) => toT(7 * 60 + i * 30))
 const NEW_LESSON = { weekday: 0, start: '17:30', end: '19:00' }
 
 export function loginMessage(s, pin) {
-  const phone = localPhone(s.phone)
-  if (s.lang === 'zh') {
-    return `${s.name}你好！这是 Kangyan 补习的学生登录资料：\n\n${SITE}\nWhatsApp 号码：${phone}\nPIN 码：${pin}\n\n登录后可以看到接下来的课，也可以请假、申请改一对一的上课时间（至少提前 12 小时），或者更改固定上课时间。`
-  }
-  return `Hi ${first(s.name)}! Here are your login details for Kangyan tuition:\n\n${SITE}\nWhatsApp number: ${phone}\nPIN: ${pin}\n\nThere you can see your upcoming lessons, report an absence, ask to move a 1-to-1 lesson (at least 12 hours before), or change your regular time. You can change your PIN after logging in.`
+  return fill('login', s.lang, { name: s.lang === 'zh' ? s.name : first(s.name), link: SITE, phone: localPhone(s.phone), pin })
 }
 
 /** Reminder of the student page for someone who already has a PIN (it can't be read back). */
 export function pageMessage(s) {
-  const phone = localPhone(s.phone)
-  if (s.lang === 'zh') {
-    return `${s.name}你好！提醒一下，Kangyan 补习的学生页面在这里：\n\n${SITE}\n登录：WhatsApp 号码 ${phone} 加上你的 6 位数 PIN 码。\n\n忘记 PIN 码的话回复我，我再发新的给你。`
-  }
-  return `Hi ${first(s.name)}! A reminder that your Kangyan student page is here:\n\n${SITE}\nLog in with your WhatsApp number ${phone} and your 6-digit PIN.\n\nForgot your PIN? Reply and I'll send you a new one.`
+  return fill('pageReminder', s.lang, { name: s.lang === 'zh' ? s.name : first(s.name), link: SITE, phone: localPhone(s.phone) })
 }
 
 /** The time a request asks for, in a language: 'Tue 3 Nov 7–8:30 PM' / 'every Tuesday 7–8:30 PM'. */
@@ -59,11 +52,9 @@ function decisionMessage(r, s, approved) {
   const what = {
     reschedule: zh ? `${lesson} 的课改到 ${askedTime(r, lang)}` : `moving your lesson on ${lesson} to ${askedTime(r, lang)}`,
     absence: zh ? `${lesson} 请假${r.recording ? '（会发录影给你）' : ''}` : `your absence on ${lesson}${r.recording ? ' (I will send you the recording)' : ''}`,
-    change: zh ? `固定上课时间改到${askedTime(r, lang)}` : `changing your regular lesson to ${askedTime(r, lang)}`,
+    change: zh ? `这堂和之后所有的课改到${askedTime(r, lang)}` : `changing this and all following lessons to ${askedTime(r, lang)}`,
   }[r.kind]
-  const reply = r.reply ? `\n\n${r.reply}` : ''
-  if (zh) return `${s.name}你好！${approved ? '已经确认' : '抱歉，这次没办法安排'}：${what}。${reply}\n\n${SITE}`
-  return `Hi ${first(s.name)}! ${approved ? 'Confirmed' : "Sorry, I can't do this one"}: ${what}.${reply}\n\n${SITE}`
+  return fill(approved ? 'accepted' : 'declined', lang, { name: zh ? s.name : first(s.name), what, reply: r.reply ? `\n\n${r.reply}` : '', link: SITE })
 }
 
 export function requestText(r) {
@@ -141,10 +132,10 @@ export const formFromStudent = (s) => ({
   ...BLANK, id: s.id, name: s.name, phone: localPhone(s.phone), level: s.level || '', lessonType: s.lesson_type, subjects: s.subjects || [],
   // Keep from / until (set by "this and all following lessons"); lessons already over are left out.
   lessons: (s.lessons || []).filter((l) => !l.until || l.until >= todayMY()).map(({ weekday, start, end, from, until }) => ({ weekday, start, end, ...(from ? { from } : {}), ...(until ? { until } : {}) })),
-  startDate: s.start_date || '', lang: s.lang, notes: s.notes || '',
+  startDate: s.start_date || '', lang: s.lang, notes: s.notes || '', hourlyRate: s.hourly_rate ?? '',
 })
 
-const BLANK = { name: '', phone: '', level: '', lessonType: 'private', subjects: [], lessons: [NEW_LESSON], startDate: '', lang: 'en', notes: '' }
+const BLANK = { name: '', phone: '', level: '', lessonType: 'private', subjects: [], lessons: [NEW_LESSON], startDate: '', lang: 'en', notes: '', hourlyRate: '' }
 
 /** One row per weekly lesson: day, start and end. Shows when it matches a timetable slot. */
 function WeeklyLessons({ value, onChange, slots, lessonType, own = [] }) {
@@ -232,6 +223,12 @@ function StudentForm({ initial, slots, onSave, onCancel, busy }) {
       <div className="sform__f"><span>Weekly lessons</span>
         <WeeklyLessons value={f.lessons} onChange={(v) => set('lessons', v)} slots={slots} lessonType={f.lessonType} own={initial.id ? initial.lessons : []} />
       </div>
+      {f.lessonType === 'private' && (
+        <label className="sform__f"><span>Hourly rate (RM, for the fee suggestion)</span>
+          <input inputMode="numeric" value={f.hourlyRate} placeholder="70" onChange={(e) => set('hourlyRate', e.target.value.replace(/[^\d]/g, ''))} />
+          <small>Their monthly fee is suggested as this rate × that month's hours. You can still change any month on the Fees tab.</small>
+        </label>
+      )}
       <div className="sform__row">
         <label className="sform__f"><span>Messages in</span>
           <select value={f.lang} onChange={(e) => set('lang', e.target.value)}><option value="en">English</option><option value="zh">中文</option></select>
@@ -280,7 +277,7 @@ export function StudentsTab({ students, setStudents, requests, setRequests, slot
   const save = async (f) => {
     setBusy(true)
     try {
-      const body = { ...f, lessons: f.lessons.map(({ weekday, start, end, from, until }) => ({ weekday, start, end, from, until })), startDate: null }
+      const body = { ...f, lessons: f.lessons.map(({ weekday, start, end, from, until }) => ({ weekday, start, end, from, until })), startDate: null, hourlyRate: f.hourlyRate === '' ? null : Number(f.hourlyRate) }
       if (f.id) {
         const { student, cleared } = await api('/api/admin/students', { method: 'POST', body: { action: 'update', ...body } })
         setStudents((list) => list.map((x) => (x.id === student.id ? student : x)))

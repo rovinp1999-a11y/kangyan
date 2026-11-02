@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { FORMATS, LESSON_TYPE_LABEL, LEVEL_GROUPS, ENQUIRER_LABEL } from '../../shared/constants.js'
 import { STRINGS, shortRange } from '../i18n.jsx'
+import { fill } from './templates.js'
 
 /* ------------------------------------------------------------------ */
 /* helpers                                                             */
@@ -81,38 +82,8 @@ export function draftMessage(r) {
   const fmt = L.formats[r.format] || L.formats.either
   const where = r.location ? (zh ? `（${r.location}）` : ` (${r.location})`) : ''
 
-  if (zh) {
-    return [
-      r.enquirer === 'parent'
-        ? `你好！我是 Kangyan，教理科和数学的补习老师。谢谢你帮${first}留下补习资料。`
-        : r.enquirer === 'student'
-          ? `${first}你好！我是 Kangyan，教理科和数学的补习老师。谢谢你留下补习资料。`
-          : `你好！我是 Kangyan，教理科和数学的补习老师。谢谢你留下${first}的补习资料。`,
-      '',
-      '我这边收到的是：',
-      `• ${type}`,
-      `• ${level}`,
-      `• 科目：${subjects}`,
-      `• 偏好时间：${times}`,
-      `• 上课方式：${fmt}${where}`,
-      '',
-      '想跟你确认一下上课时间，顺便说明学费。请问什么时候方便聊聊？',
-    ].join('\n')
-  }
-  return [
-    r.enquirer === 'student'
-      ? `Hi ${first}, this is Kangyan, the Science and Maths tutor. Thanks for your enquiry about tuition!`
-      : `Hi, this is Kangyan, the Science and Maths tutor. Thanks for your enquiry about tuition for ${first}!`,
-    '',
-    "Here's a quick summary of what you sent:",
-    `• Class: ${type}`,
-    `• Level: ${level}`,
-    `• Subject${r.subjects.length > 1 ? 's' : ''}: ${subjects}`,
-    `• Preferred time${slots.length > 1 ? 's' : ''}: ${times}`,
-    `• Lessons: ${fmt}${where}`,
-    '',
-    "I'd be happy to arrange a time for the first lesson and let you know the fees. When would be a good time to chat?",
-  ].join('\n')
+  const lang = zh ? 'zh' : 'en'
+  return fill(r.enquirer === 'student' ? 'enquiryStudent' : 'enquiryParent', lang, { name: first, class: type, level, subjects, times, lessons: `${fmt}${where}` })
 }
 
 export const levelSystem = (level) => LEVEL_GROUPS.find((g) => g.levels.includes(level))?.key || 'other'
@@ -186,7 +157,10 @@ export const ICONS = {
   clock: 'M12 22a10 10 0 100-20 10 10 0 000 20z M12 6v6l4 2',
   chart: 'M3 3v18h18 M7 15v2 M11 11v6 M15 7v10 M19 12v5',
   key: 'M15 7a4 4 0 11-7.75 1.4L3 13.6V17h3.4v-2.2h2.2v-2.2l1.3-1.3A4 4 0 0115 7z M15.5 7.5h.01',
-  users: 'M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2 M9 11a4 4 0 100-8 4 4 0 000 8z M22 21v-2a4 4 0 00-3-3.87 M16 3.13a4 4 0 010 7.75',
+  cash: 'M2 6h20v12H2z M12 15a3 3 0 100-6 3 3 0 000 6z M6 12h.01 M18 12h.01',
+  megaphone: 'M3 11v2a1 1 0 001 1h2l5 4V6L6 10H4a1 1 0 00-1 1z M15 8a5 5 0 010 8 M18 5a9 9 0 010 14',
+  menu: 'M4 6h16 M4 12h16 M4 18h16',
+    users: 'M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2 M9 11a4 4 0 100-8 4 4 0 000 8z M22 21v-2a4 4 0 00-3-3.87 M16 3.13a4 4 0 010 7.75',
   grid: 'M3 3h18v18H3z M3 9h18 M3 15h18 M9 3v18 M15 3v18',
   group: 'M9 11a4 4 0 100-8 4 4 0 000 8z M2 21v-1a6 6 0 016-6h2a6 6 0 016 6v1 M17 3.5a4 4 0 010 7.5 M22 21v-1a6 6 0 00-4-5.6',
 }

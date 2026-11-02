@@ -1115,6 +1115,111 @@ textarea.wz__input { resize: vertical; min-height: 0; font-size: 1rem; }
 .acal-p__acts { display: flex; flex-wrap: wrap; gap: 6px; }
 .acal-p__acts .act { min-height: 36px; padding: 6px 11px; font-size: .82rem; }
 
+/* ---------- admin: grouped sidebar + phone More menu ---------- */
+.aside__group { display: grid; gap: 2px; }
+.aside__group + .aside__group { margin-top: 10px; }
+.aside__label { font-size: .66rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); padding: 6px 12px 2px; }
+.aside__nav .aside__more { display: none; }
+.aside { overflow-y: auto; }
+@media (max-width: 960px) {
+  .aside__group { display: contents; }
+  .aside__label { display: none; }
+  .aside__nav .is-more { display: none !important; }
+  .aside__nav .aside__more { display: flex; font: inherit; flex: 1; flex-direction: column; align-items: center; gap: 3px; padding: 8px 0 7px; font-size: .66rem; font-weight: 600; border: 0; border-radius: 13px; background: none; color: var(--ink); cursor: pointer; position: relative; }
+  .aside__more.is-on { background: var(--ink); color: var(--white); }
+  .aside__more .ic { width: 19px; height: 19px; }
+  .aside__more .badge { position: absolute; top: 3px; right: calc(50% - 22px); min-width: 18px; height: 18px; font-size: .66rem; }
+  .aside { overflow: visible; }
+}
+.more-sheet { position: fixed; inset: 0; z-index: 44; }
+.more-sheet__bg { position: absolute; inset: 0; background: rgba(21,18,28,.35); animation: fade .15s ease-out; }
+.more-sheet__panel { position: absolute; left: 10px; right: 10px; bottom: calc(84px + env(safe-area-inset-bottom)); background: var(--white); border: 2px solid var(--ink); border-radius: 18px; padding: 10px; display: grid; gap: 8px; box-shadow: 0 12px 30px -10px rgba(21,18,28,.5); animation: sheetUp .18s ease-out; }
+.more-sheet__group { display: grid; gap: 2px; }
+.more-sheet__group button { font: inherit; font-weight: 600; display: flex; align-items: center; gap: 10px; padding: 11px 12px; border: 0; border-radius: 12px; background: none; color: var(--ink); text-align: left; cursor: pointer; }
+.more-sheet__group button.is-on { background: var(--ink); color: var(--white); }
+.more-sheet__group .ic { width: 19px; height: 19px; }
+.more-sheet__group .badge { margin-left: auto; }
+@media (min-width: 961px) { .more-sheet { display: none; } }
+
+/* ---------- admin: fees ---------- */
+.fees { display: grid; gap: 12px; }
+.fees__bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.fees__sum { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: .88rem; color: var(--muted); }
+.fees__sum b { font-family: var(--ff-display); font-size: 1.1rem; color: var(--ink); }
+.fees__sum .is-due b { color: #B45309; }
+.fees__list { display: grid; gap: 8px; }
+.fee { display: grid; grid-template-columns: minmax(0, 1.4fr) 140px 110px auto; align-items: center; gap: 10px 14px; padding: 12px 14px; background: var(--white); border: 2px solid var(--ink); border-radius: 14px; border-left-width: 8px; }
+.fee--paid { border-left-color: var(--green); }
+.fee--due { border-left-color: var(--yellow); }
+.fee--overdue { border-left-color: #DC2626; }
+.fee--upcoming { border-left-color: var(--line); }
+.fee__who { display: grid; min-width: 0; }
+.fee__who b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fee__who span { font-size: .78rem; color: var(--muted); }
+.fee__amt { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 0 6px; font-weight: 700; }
+.fee__amt input { font: inherit; font-size: 16px; font-weight: 700; width: 100%; min-width: 0; box-sizing: border-box; min-height: 38px; padding: 4px 8px; border: 2px solid var(--line); border-radius: 10px; background: var(--paper); color: var(--ink); }
+.fee__amt input:focus { outline: 0; border-color: var(--ink); background: var(--white); }
+.fee__amt small { grid-column: 2; font-size: .7rem; font-weight: 500; color: var(--muted); }
+.fee__state { justify-self: start; font-size: .76rem; font-weight: 700; padding: 3px 10px; border-radius: 999px; border: 1.5px solid var(--line); }
+.fee__state--paid { background: rgba(16,185,129,.16); border-color: var(--green); }
+.fee__state--due { background: #FEF3C7; border-color: var(--yellow); }
+.fee__state--overdue { background: #FEE2E2; border-color: #FCA5A5; color: #991B1B; }
+.fee__acts { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.fee__acts .act { min-height: 36px; padding: 6px 11px; font-size: .82rem; }
+.fee__acts .btn .ic, .fee__acts .act .ic { width: 15px; height: 15px; }
+@media (max-width: 720px) {
+  .fee { grid-template-columns: minmax(0, 1fr) auto; }
+  .fee__amt { grid-column: 1; }
+  .fee__state { grid-column: 2; grid-row: 1; justify-self: end; }
+  .fee__acts { grid-column: 1 / -1; justify-content: flex-start; }
+}
+
+/* ---------- admin: announcements + templates ---------- */
+.ann { display: grid; gap: 18px; }
+.ann__form { max-width: 720px; }
+.ann__list { list-style: none; display: grid; gap: 8px; }
+.ann__list li { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 12px 14px; background: var(--white); border: 2px solid var(--ink); border-radius: 14px; }
+.ann__list li.is-over { opacity: .55; }
+.ann__list p { font-size: .9rem; margin-top: 4px; white-space: pre-wrap; }
+.ann__list small { display: block; font-size: .78rem; color: var(--muted); margin-top: 6px; }
+.tpls { display: grid; gap: 14px; }
+.tpl { display: grid; gap: 10px; padding: 16px; background: var(--white); border: 2px solid var(--ink); border-radius: var(--radius); }
+.tpl__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.tpl__head h3 { font-size: 1.05rem; }
+.tpl__head p { font-size: .8rem; color: var(--muted); }
+.tpl__vars { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: .8rem; color: var(--muted); }
+.tpl__vars button { font: inherit; font-family: ui-monospace, Menlo, monospace; font-size: .78rem; padding: 3px 8px; border: 1.5px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--purple); cursor: pointer; }
+.tpl__vars button:hover { border-color: var(--purple); }
+.tpl__langs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.tpl__langs textarea { font: inherit; font-size: .9rem; line-height: 1.5; width: 100%; box-sizing: border-box; padding: 10px 12px; border: 2px solid var(--ink); border-radius: 12px; resize: vertical; }
+.tpl__preview summary { cursor: pointer; font-size: .84rem; font-weight: 600; color: var(--purple); }
+.tpl__preview pre { margin-top: 8px; padding: 12px; border-radius: 12px; background: #DCF8C6; font: inherit; font-size: .88rem; white-space: pre-wrap; line-height: 1.5; }
+.tpls__save { position: sticky; bottom: 12px; display: flex; justify-content: flex-end; }
+@media (max-width: 960px) { .tpls__save { bottom: calc(96px + env(safe-area-inset-bottom)); } }
+@media (max-width: 720px) { .tpl__langs { grid-template-columns: minmax(0, 1fr); } }
+
+/* student page extras */
+.stu-news { padding: 14px 16px; border-radius: var(--radius); background: #FEF3C7; border: 2px solid var(--ink); display: grid; gap: 4px; }
+.stu-news p { font-size: .92rem; white-space: pre-wrap; }
+.stu-fees ul, .stu-hist ul { list-style: none; display: grid; gap: 6px; }
+.stu-fee { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border-radius: 12px; background: var(--paper); border: 1.5px solid var(--line); }
+.stu-fee div { display: grid; }
+.stu-fee div span { font-family: var(--ff-display); font-size: 1.2rem; font-weight: 700; }
+.stu-fee--overdue { border-color: #FCA5A5; background: #FEF2F2; }
+.stu-chip--fee-paid { background: rgba(16,185,129,.16); border-color: var(--green); }
+.stu-chip--fee-due { background: #FEF3C7; border-color: var(--yellow); }
+.stu-chip--fee-overdue { background: #FEE2E2; border-color: #FCA5A5; color: #991B1B; }
+.stu-callink { display: grid; gap: 8px; }
+.stu-callink > .act { justify-self: start; }
+.stu-callink__box { display: grid; gap: 8px; padding: 12px; border-radius: 12px; background: var(--paper); border: 1.5px solid var(--line); font-size: .9rem; }
+.stu-hist__month { display: grid; gap: 6px; font-weight: 600; font-size: .92rem; }
+.stu-hist__bar { height: 10px; border-radius: 999px; background: var(--paper); border: 1.5px solid var(--line); overflow: hidden; }
+.stu-hist__bar i { display: block; height: 100%; background: var(--green); }
+.stu-hist li { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-size: .88rem; padding: 8px 0; border-top: 1px solid var(--line); }
+.stu-chip--h-lesson { background: rgba(16,185,129,.14); border-color: var(--green); }
+.stu-chip--h-absent { background: #FEF3C7; border-color: var(--yellow); }
+.stu-chip--h-cancelled, .stu-chip--h-moved { color: var(--muted); }
+
 /* toast */
 .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 100; background: var(--ink); color: var(--white); padding: 12px 18px; border-radius: 14px; font-weight: 600; font-size: .92rem; box-shadow: 0 14px 30px -12px rgba(21,18,28,.6); animation: toastIn .2s ease-out; max-width: calc(100vw - 32px); text-align: center; }
 .toast.is-error { background: #DC2626; }

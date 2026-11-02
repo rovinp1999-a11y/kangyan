@@ -6,16 +6,31 @@ import { SlotsTab } from './Timetable.jsx'
 import { AdminCalendar } from './Calendar.jsx'
 import { Overview } from './Overview.jsx'
 import { Schedule } from './Schedule.jsx'
+import { FeesTab } from './Fees.jsx'
+import { AnnouncementsTab } from './Announcements.jsx'
+import { TemplatesTab } from './TemplatesTab.jsx'
+import { setSavedTemplates } from './templates.js'
+import { feeState } from '../../shared/schedule.js'
+import { todayMY } from '../../shared/lessons.js'
 import { StudentsTab, formFromStudent } from './Students.jsx'
 
-const TABS = [
-  { key: 'overview', label: 'Overview', icon: 'chart' },
-  { key: 'enquiries', label: 'Enquiries', icon: 'inbox' },
-  { key: 'students', label: 'Students', icon: 'users' },
-  { key: 'calendar', label: 'My calendar', short: 'Calendar', icon: 'calendar' },
-  { key: 'schedule', label: 'Schedule', icon: 'grid' },
-  { key: 'slots', label: 'Enquiry slots', short: 'Slots', icon: 'clock' },
+// Sidebar sections. On phones the bottom bar shows the `bar` tabs and a More menu for the rest.
+const GROUPS = [
+  { label: null, tabs: [{ key: 'overview', label: 'Overview', icon: 'chart', bar: true }] },
+  { label: 'New enquiries', tabs: [
+    { key: 'enquiries', label: 'Enquiries', icon: 'inbox', bar: true },
+    { key: 'schedule', label: 'Group ideas', icon: 'grid' },
+    { key: 'slots', label: 'Enquiry slots', icon: 'clock' },
+  ] },
+  { label: 'My students', tabs: [
+    { key: 'students', label: 'Students', icon: 'users', bar: true },
+    { key: 'calendar', label: 'My calendar', short: 'Calendar', icon: 'calendar', bar: true },
+    { key: 'fees', label: 'Fees', icon: 'cash' },
+    { key: 'news', label: 'Announcements', icon: 'megaphone' },
+  ] },
+  { label: 'Settings', tabs: [{ key: 'templates', label: 'Message templates', icon: 'chat' }] },
 ]
+const TABS = GROUPS.flatMap((g) => g.tabs)
 const TAB_KEY = 'kangyan-admin-tab'
 const savedTab = () => { try { const t = sessionStorage.getItem(TAB_KEY); return TABS.some((x) => x.key === t) ? t : 'overview' } catch { return 'overview' } }
 
@@ -114,6 +129,9 @@ export default function AdminPage() {
   const [students, setStudents] = useState(null)
   const [requests, setRequests] = useState(null)
   const [prefill, setPrefill] = useState(null)
+  const [fees, setFees] = useState([])
+  const [announcements, setAnnouncements] = useState([])
+  const [more, setMore] = useState(false) // phones: the More menu
   const [editing, setEditing] = useState(null) // enquiry being corrected
   const [pwOpen, setPwOpen] = useState(false)
   const [savingEnq, setSavingEnq] = useState(false)
@@ -169,6 +187,9 @@ export default function AdminPage() {
       setEnquiries(e.enquiries)
       setStudents(st.students)
       setRequests(st.requests)
+      setFees(st.fees || [])
+      setAnnouncements(st.announcements || [])
+      setSavedTemplates(st.templates)
       if (!s.ok) throw new Error(s.error || 'Could not load the timetable')
       setSlots(sortSlots(s.slots))
       return true
@@ -285,7 +306,13 @@ export default function AdminPage() {
     schedule: ['Schedule', 'Who picked which time, like a spreadsheet. Tap a name to open the enquiry.'],
     calendar: ['My calendar', `Your classes with confirmed students · ${students?.filter((s) => s.active).length ?? 0} active students`],
     slots: ['Enquiry slots', `${openSlots} open slot${openSlots === 1 ? '' : 's'} · new enquiries can only pick slots you set to Open`],
+    fees: ['Fees', 'Monthly tuition fees: what each student owes, who has paid, and one-click reminders.'],
+    news: ['Announcements', 'Shown at the top of the student page.'],
+    templates: ['Message templates', 'The WhatsApp messages behind the one-click buttons.'],
   }
+  HEAD.schedule = ['Group ideas', 'Enquiries who picked the same time, grouped by subject and level.']
+  const unpaidCount = students ? students.filter((s) => s.active && feeState(todayMY().slice(0, 7), fees.find((f) => f.student_id === s.id && f.month === todayMY().slice(0, 7))?.paid) === 'overdue').length : 0
+  const badge = (k) => (k === 'enquiries' ? newCount : k === 'students' ? pendingCount : k === 'fees' ? unpaidCount : 0)
 
   return (
     <div className={`admin ${authed ? 'is-authed' : ''}`}>
@@ -296,13 +323,21 @@ export default function AdminPage() {
 
         {authed && (
           <nav className="aside__nav" aria-label="Admin sections">
-            {TABS.map((t) => (
-              <button key={t.key} type="button" className={tab === t.key ? 'is-on' : ''} aria-current={tab === t.key ? 'page' : undefined} onClick={() => go(t.key)}>
-                <Icon name={t.icon} /><span className="tab-full">{t.label}</span><span className="tab-short">{t.short || t.label}</span>
-                {t.key === 'enquiries' && newCount > 0 && <span className="badge" aria-label={`${newCount} new`}>{newCount}</span>}
-                {t.key === 'students' && pendingCount > 0 && <span className="badge" aria-label={`${pendingCount} requests waiting`}>{pendingCount}</span>}
-              </button>
+            {GROUPS.map((g) => (
+              <div className="aside__group" key={g.label || 'top'}>
+                {g.label && <span className="aside__label">{g.label}</span>}
+                {g.tabs.map((t) => (
+                  <button key={t.key} type="button" className={`${tab === t.key ? 'is-on' : ''} ${t.bar ? 'is-bar' : 'is-more'}`} aria-current={tab === t.key ? 'page' : undefined} onClick={() => { setMore(false); go(t.key) }}>
+                    <Icon name={t.icon} /><span className="tab-full">{t.label}</span><span className="tab-short">{t.short || t.label}</span>
+                    {badge(t.key) > 0 && <span className="badge" aria-label={`${badge(t.key)} need attention`}>{badge(t.key)}</span>}
+                  </button>
+                ))}
+              </div>
             ))}
+            <button type="button" className={`aside__more ${TABS.find((t) => t.key === tab)?.bar ? '' : 'is-on'}`} onClick={() => setMore((m) => !m)} aria-expanded={more}>
+              <Icon name="menu" /><span className="tab-short">More</span>
+              {badge('fees') > 0 && <span className="badge" aria-label={`${badge('fees')} overdue fees`}>{badge('fees')}</span>}
+            </button>
           </nav>
         )}
 
@@ -343,6 +378,9 @@ export default function AdminPage() {
             {tab === 'overview' && <Overview rows={rows} slots={slots} onOpen={setOpenId} go={go} />}
             {tab === 'enquiries' && <EnquiriesTab rows={rows} actions={actions} onOpen={setOpenId} onMakeStudent={makeStudent} onEdit={editEnquiry} studentOf={studentOf} onViewStudent={editStudent} notify={notify} filter={enqFilter} setFilter={setEnqFilter} />}
             {tab === 'students' && <StudentsTab students={students} setStudents={setStudents} requests={requests} setRequests={setRequests} slots={slots} refreshSlots={refreshSlots} prefill={prefill} clearPrefill={clearPrefill} onCreated={(s) => s.enquiry_id && setEnquiries((rs) => rs.map((r) => (r.id === s.enquiry_id ? { ...r, status: 'confirmed' } : r)))} notify={notify} onAuthError={logout} />}
+            {tab === 'fees' && <FeesTab students={students} requests={requests} fees={fees} setFees={setFees} notify={notify} onAuthError={logout} />}
+            {tab === 'news' && <AnnouncementsTab announcements={announcements} setAnnouncements={setAnnouncements} students={students} notify={notify} onAuthError={logout} />}
+            {tab === 'templates' && <TemplatesTab notify={notify} onAuthError={logout} />}
             {tab === 'schedule' && <Schedule rows={rows} slots={slots} onOpen={setOpenId} notify={notify} />}
             {tab === 'calendar' && <AdminCalendar slots={slots} setSlots={setSlots} students={students} setStudents={setStudents} requests={requests} setRequests={setRequests} refreshSlots={refreshSlots} notify={notify} onAuthError={logout} onEditStudent={editStudent} />}
             {tab === 'slots' && <SlotsTab slots={slots} setSlots={setSlots} enquiries={rows} students={students} onAuthError={logout} notify={notify} onOpen={setOpenId} />}
@@ -354,6 +392,27 @@ export default function AdminPage() {
         <Drawer onClose={closeDrawer} label={`Enquiry from ${opened.student_name}`}>
           <EnquiryCard r={opened} onStatus={actions.status} onNotes={actions.notes} onMakeStudent={makeStudent} onEdit={editEnquiry} student={studentOf(opened)} onViewStudent={(s) => { setOpenId(null); editStudent(s) }} notify={notify} />
         </Drawer>
+      )}
+
+      {more && (
+        <div className="more-sheet" role="dialog" aria-label="More">
+          <div className="more-sheet__bg" onClick={() => setMore(false)} />
+          <div className="more-sheet__panel">
+            {GROUPS.map((g) => g.tabs.filter((t) => !t.bar).length > 0 && (
+              <div key={g.label} className="more-sheet__group">
+                <span className="aside__label">{g.label}</span>
+                {g.tabs.filter((t) => !t.bar).map((t) => (
+                  <button key={t.key} type="button" className={tab === t.key ? 'is-on' : ''} onClick={() => { setMore(false); go(t.key) }}>
+                    <Icon name={t.icon} />{t.label}{badge(t.key) > 0 && <span className="badge">{badge(t.key)}</span>}
+                  </button>
+                ))}
+              </div>
+            ))}
+            <div className="more-sheet__group">
+              <button type="button" onClick={() => { setMore(false); setPwOpen(true) }}><Icon name="key" />Change password</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {pwOpen && (

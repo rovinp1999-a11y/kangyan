@@ -32,6 +32,10 @@
     {
       "source": "/zh",
       "destination": "/zh/index.html"
+    },
+    {
+      "source": "/cal/:token.ics",
+      "destination": "/api/student?feed=:token"
     }
   ],
   "headers": [

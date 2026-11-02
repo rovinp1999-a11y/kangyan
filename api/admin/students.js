@@ -10,6 +10,10 @@
 //   POST { action: 'move', studentId, lessonDate, lessonStart, toDate, toStart, toEnd } → tutor moves one lesson (this week only)
 //   POST { action: 'cancelLesson', studentId, lessonDate, lessonStart }              → tutor cancels one lesson
 //   POST { action: 'moveSeries', studentId, lessonDate, lessonStart, toDate, toStart, toEnd } → this and all following lessons
+//   POST { action: 'setFee', studentId, month, amount (null = use suggestion), paid, note }  → one month's fee
+//   POST { action: 'announce', title, body, audience, studentId?, until? } / { action: 'unannounce', id }
+//   POST { action: 'saveTemplates', templates }   → WhatsApp message templates
+//   POST { action: 'resetCalendar', id }          → new private phone-calendar link
 //   POST { action: 'undo', id }                                                     → withdraw a move / cancellation
 // A student has one or more weekly lessons ({ weekday, start, end }). When a 1-to-1
 // lesson matches a timetable slot, that slot is marked taken, and freed again when nobody uses it.
@@ -21,10 +25,10 @@ import { LEVELS, SUBJECTS, LESSON_TYPES } from '../../shared/constants.js'
 import { SLOT_COLUMNS } from '../slots.js'
 import { isDate, weekdayOf, dateLabel, covers, addDays, todayMY } from '../../shared/lessons.js'
 
-const STUDENT_COLUMNS = `s.id, s.created_at, s.name, s.phone, s.level, s.lesson_type, s.subjects, s.lessons,
+const STUDENT_COLUMNS = `s.id, s.created_at, s.name, s.phone, s.level, s.lesson_type, s.subjects, s.lessons, s.hourly_rate,
   to_char(s.start_date, 'YYYY-MM-DD') AS start_date, s.active, s.enquiry_id, s.lang, s.notes, s.last_login`
 const REQUEST_COLUMNS = `r.id, r.created_at, r.student_id, r.kind, to_char(r.lesson_date, 'YYYY-MM-DD') AS lesson_date, r.from_lesson,
-  r.to_slot_id, to_char(r.to_date, 'YYYY-MM-DD') AS to_date, r.to_weekday, r.to_start, r.to_end, r.to_label, r.recording, r.note, r.status, r.reply, r.decided_at`
+  r.to_slot_id, to_char(r.to_date, 'YYYY-MM-DD') AS to_date, r.to_weekday, r.to_start, r.to_end, r.to_label, r.recording, r.note, r.status, r.reply, r.decided_at, r.by_tutor`
 const str = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '')
 
 async function getStudent(sql, id) {
@@ -124,6 +128,7 @@ function fields(b, partial) {
   if (has('subjects')) { out.subjects = Array.isArray(b.subjects) ? [...new Set(b.subjects.filter((x) => SUBJECTS.includes(x)))] : [] }
   if (has('startDate')) { out.start_date = b.startDate ? (isDate(b.startDate) ? b.startDate : NaN) : null; if (Number.isNaN(out.start_date)) return 'Invalid start date' }
   if (has('notes')) out.notes = str(b.notes, 2000) || null
+  if (has('hourlyRate')) { const n = b.hourlyRate === '' || b.hourlyRate == null ? null : Number(b.hourlyRate); if (n !== null && !(Number.isInteger(n) && n >= 0 && n <= 2000)) return 'Hourly rate must be a whole number'; out.hourly_rate = n }
   if (has('lang')) out.lang = b.lang === 'zh' ? 'zh' : 'en'
   if (partial && 'active' in b) out.active = b.active === true
   return out
@@ -137,8 +142,11 @@ export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
       const students = await sql.query(`SELECT ${STUDENT_COLUMNS} FROM students s ORDER BY s.active DESC, s.name`)
-      const requests = await sql.query(`SELECT ${REQUEST_COLUMNS} FROM student_requests r ORDER BY (r.status = 'pending') DESC, r.created_at DESC LIMIT 300`)
-      return send(res, 200, { ok: true, students, requests })
+      const requests = await sql.query(`SELECT ${REQUEST_COLUMNS} FROM student_requests r ORDER BY (r.status = 'pending') DESC, r.created_at DESC LIMIT 1000`)
+      const fees = await sql`SELECT student_id, month, amount, paid, paid_at, note FROM student_fees WHERE month >= to_char(now() - interval '6 months', 'YYYY-MM')`
+      const announcements = await sql`SELECT id, created_at, title, body, audience, student_id, to_char(until, 'YYYY-MM-DD') AS until FROM announcements ORDER BY created_at DESC LIMIT 100`
+      const [t] = await sql`SELECT value FROM admin_settings WHERE key = 'templates'`
+      return send(res, 200, { ok: true, students, requests, fees, announcements, templates: t ? JSON.parse(t.value) : {} })
     }
 
     const b = readBody(req)
@@ -152,13 +160,60 @@ export default async function handler(req, res) {
       const enquiryId = isDbId(Number(b.enquiryId)) ? Number(b.enquiryId) : null
       const pin = await uniquePin(sql, f.phone)
       const [row] = await sql`
-        INSERT INTO students (name, phone, pin_hash, pin_enc, level, lesson_type, subjects, lessons, start_date, enquiry_id, lang, notes)
-        VALUES (${f.name}, ${f.phone}, ${hashPin(pin)}, ${encryptPin(pin)}, ${f.level}, ${f.lesson_type}, ${f.subjects}, ${JSON.stringify(lessons)}::jsonb, ${f.start_date}, ${enquiryId}, ${f.lang}, ${f.notes})
+        INSERT INTO students (name, phone, pin_hash, pin_enc, level, lesson_type, subjects, lessons, start_date, enquiry_id, lang, notes, hourly_rate)
+        VALUES (${f.name}, ${f.phone}, ${hashPin(pin)}, ${encryptPin(pin)}, ${f.level}, ${f.lesson_type}, ${f.subjects}, ${JSON.stringify(lessons)}::jsonb, ${f.start_date}, ${enquiryId}, ${f.lang}, ${f.notes}, ${f.hourly_rate ?? null})
         RETURNING id`
       const created = await getStudent(sql, row.id)
       await syncSlots(sql, null, created)
       if (enquiryId) await sql`UPDATE enquiries SET status = 'confirmed' WHERE id = ${enquiryId}`
       return send(res, 201, { ok: true, student: created, pin })
+    }
+
+    if (b.action === 'setFee') {
+      const sid = Number(b.studentId)
+      if (!isDbId(sid) || !/^\d{4}-\d{2}$/.test(b.month || '')) return fail(res, 400, 'Invalid fee')
+      const amount = b.amount === '' || b.amount == null ? null : Number(b.amount)
+      if (amount !== null && !(Number.isInteger(amount) && amount >= 0 && amount <= 100000)) return fail(res, 400, 'Amount must be a whole number of ringgit')
+      const paid = b.paid === true
+      const [row] = await sql`
+        INSERT INTO student_fees (student_id, month, amount, paid, paid_at, note)
+        VALUES (${sid}, ${b.month}, ${amount}, ${paid}, ${paid ? new Date() : null}, ${str(b.note, 300) || null})
+        ON CONFLICT (student_id, month) DO UPDATE SET amount = EXCLUDED.amount, paid = EXCLUDED.paid,
+          paid_at = CASE WHEN EXCLUDED.paid AND NOT student_fees.paid THEN now() WHEN EXCLUDED.paid THEN student_fees.paid_at ELSE NULL END,
+          note = EXCLUDED.note, updated_at = now()
+        RETURNING student_id, month, amount, paid, paid_at, note`
+      return send(res, 200, { ok: true, fee: row })
+    }
+
+    if (b.action === 'announce') {
+      const title = str(b.title, 120)
+      if (title.length < 2) return fail(res, 400, 'Please add a title')
+      const audience = ['all', 'private', 'group', 'student'].includes(b.audience) ? b.audience : 'all'
+      const sid = audience === 'student' ? Number(b.studentId) : null
+      if (audience === 'student' && !isDbId(sid)) return fail(res, 400, 'Choose a student')
+      const until = isDate(b.until) ? b.until : null
+      const [row] = await sql`
+        INSERT INTO announcements (title, body, audience, student_id, until) VALUES (${title}, ${str(b.body, 2000) || null}, ${audience}, ${sid}, ${until})
+        RETURNING id, created_at, title, body, audience, student_id, to_char(until, 'YYYY-MM-DD') AS until`
+      return send(res, 201, { ok: true, announcement: row })
+    }
+
+    if (b.action === 'unannounce') {
+      await sql`DELETE FROM announcements WHERE id = ${Number(b.id)}`
+      return send(res, 200, { ok: true })
+    }
+
+    if (b.action === 'saveTemplates') {
+      // { key: { en, zh } } with plain text; anything else is ignored.
+      const t = b.templates && typeof b.templates === 'object' ? b.templates : {}
+      const clean = {}
+      for (const [k, v] of Object.entries(t).slice(0, 30)) {
+        if (!/^[a-zA-Z]{2,40}$/.test(k) || !v || typeof v !== 'object') continue
+        clean[k] = { en: str(v.en, 3000), zh: str(v.zh, 3000) }
+      }
+      await sql`INSERT INTO admin_settings (key, value) VALUES ('templates', ${JSON.stringify(clean)})
+        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`
+      return send(res, 200, { ok: true, templates: clean })
     }
 
     if (b.action === 'moveSeries') {
@@ -197,6 +252,9 @@ export default async function handler(req, res) {
         to = { date: b.toDate, weekday, start: b.toStart, end: b.toEnd, slot: slot?.id ?? null, label: `${dateLabel(b.toDate)} ${hm(b.toStart)}–${hm(b.toEnd)}` }
       }
       const kind = b.action === 'move' ? 'reschedule' : 'absence'
+      // A tutor cancellation isn't charged; marking a student absent (a no-show) is.
+      const byTutor = !(b.action === 'cancelLesson' && b.absent === true)
+      const replyText = byTutor ? 'Changed by your tutor' : 'Marked absent by your tutor'
       // Reuse the request already on this lesson (a student's pending ask, or an earlier change) so there is only ever one.
       const [existing] = await sql.query(`SELECT id FROM student_requests WHERE student_id = $1 AND lesson_date = $2::date AND kind <> 'change'
           AND status IN ('pending','approved') AND (from_lesson IS NULL OR from_lesson->>'start' = $3) ORDER BY created_at DESC LIMIT 1`, [sid, b.lessonDate, lesson.start])
@@ -205,14 +263,14 @@ export default async function handler(req, res) {
         await sql`
           UPDATE student_requests SET kind = ${kind}, status = 'approved', decided_at = now(), from_lesson = ${JSON.stringify(from)}::jsonb,
             to_date = ${to?.date ?? null}, to_weekday = ${to?.weekday ?? null}, to_start = ${to?.start ?? null}, to_end = ${to?.end ?? null},
-            to_slot_id = ${to?.slot ?? null}, to_label = ${to?.label ?? null}, reply = COALESCE(reply, 'Changed by your tutor')
+            to_slot_id = ${to?.slot ?? null}, to_label = ${to?.label ?? null}, reply = COALESCE(reply, ${replyText}), by_tutor = ${byTutor}
           WHERE id = ${existing.id}`
         rid = existing.id
       } else {
         const [row] = await sql`
-          INSERT INTO student_requests (student_id, kind, lesson_date, from_lesson, to_slot_id, to_date, to_weekday, to_start, to_end, to_label, status, reply, decided_at)
+          INSERT INTO student_requests (student_id, kind, lesson_date, from_lesson, to_slot_id, to_date, to_weekday, to_start, to_end, to_label, status, reply, decided_at, by_tutor)
           VALUES (${sid}, ${kind}, ${b.lessonDate}, ${JSON.stringify(from)}::jsonb, ${to?.slot ?? null}, ${to?.date ?? null}, ${to?.weekday ?? null},
-            ${to?.start ?? null}, ${to?.end ?? null}, ${to?.label ?? null}, 'approved', 'Changed by your tutor', now())
+            ${to?.start ?? null}, ${to?.end ?? null}, ${to?.label ?? null}, 'approved', ${replyText}, now(), ${byTutor})
           RETURNING id`
         rid = row.id
       }
@@ -248,6 +306,11 @@ export default async function handler(req, res) {
       const pin = await uniquePin(sql, s.phone, id)
       await sql`UPDATE students SET pin_hash = ${hashPin(pin)}, pin_enc = ${encryptPin(pin)} WHERE id = ${id}`
       return send(res, 200, { ok: true, pin })
+    }
+
+    if (b.action === 'resetCalendar') {
+      await sql`UPDATE students SET cal_token = NULL WHERE id = ${id}`
+      return send(res, 200, { ok: true })
     }
 
     if (b.action === 'showPin') {

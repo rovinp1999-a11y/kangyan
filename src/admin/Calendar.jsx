@@ -158,12 +158,14 @@ function Detail({ ev, slots, onDecide, onEdit, onMove, onMoveSeries, onCancelLes
                     {p.state === 'regular' && (
                       <>
                         <button type="button" className="act" onClick={() => setPicking(key)}><Icon name="calendar" />Move…</button>
-                        <button type="button" className="act" disabled={busy} onClick={() => window.confirm(`Cancel ${p.s.name}'s lesson on ${dateLabel(date)}? Other weeks stay the same.`) && act(() => onCancelLesson(p.s, orig))}>Cancel this week</button>
+                        {date < todayMY()
+                          ? <button type="button" className="act" disabled={busy} onClick={() => act(() => onCancelLesson(p.s, orig, true))}>Mark absent</button>
+                          : <button type="button" className="act" disabled={busy} onClick={() => window.confirm(`Cancel ${p.s.name}'s lesson on ${dateLabel(date)}? Other weeks stay the same.`) && act(() => onCancelLesson(p.s, orig))}>Cancel this week</button>}
                       </>
                     )}
                     {p.state === 'movedIn' && <button type="button" className="act" onClick={() => setPicking(key)}><Icon name="edit" />Move…</button>}
                     {['movedIn', 'movedOut', 'absent'].includes(p.state) && (
-                      <button type="button" className="act" disabled={busy} onClick={() => act(() => onUndo(p.r))}>{p.state === 'absent' ? 'Undo cancel' : 'Undo move'}</button>
+                      <button type="button" className="act" disabled={busy} onClick={() => act(() => onUndo(p.r))}>{p.state === 'absent' ? (date < todayMY() ? 'Mark attended' : 'Undo cancel') : 'Undo move'}</button>
                     )}
                   </div>
                 )
@@ -206,7 +208,8 @@ export function AdminCalendar({ slots, setSlots, students, setStudents, requests
     } catch (e) { fail(e) }
   }
   const move = (s, orig, t) => oneOff({ action: 'move', studentId: s.id, lessonDate: orig.date, lessonStart: orig.start, toDate: t.date, toStart: t.start, toEnd: t.end }, `Moved ${s.name}'s lesson to ${dateLabel(t.date)} ${range(t.start, t.end)}`)
-  const cancelLesson = (s, orig) => oneOff({ action: 'cancelLesson', studentId: s.id, lessonDate: orig.date, lessonStart: orig.start }, `Cancelled ${s.name}'s lesson on ${dateLabel(orig.date)}`)
+  const cancelLesson = (s, orig, absent = false) => oneOff({ action: 'cancelLesson', studentId: s.id, lessonDate: orig.date, lessonStart: orig.start, absent },
+    absent ? `${s.name} marked absent on ${dateLabel(orig.date)}` : `Cancelled ${s.name}'s lesson on ${dateLabel(orig.date)}`)
   const undo = (r) => oneOff({ action: 'undo', id: r.id }, 'Undone: back to the usual time')
   const moveSeries = async (s, orig, t) => {
     try {
