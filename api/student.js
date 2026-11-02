@@ -4,6 +4,7 @@
 //   POST { action: 'request', kind, ... }  → ask to move one lesson, report an absence or change the regular time
 //   POST { action: 'cancel', id }          → withdraw a pending request
 //   POST { action: 'pin', current, next }  → change PIN (returns a fresh token)
+//   POST { action: 'profile', ... }        → update their own school, birthday, contact and parent details
 //   GET ?feed=<token>                      → their lessons as a calendar feed (.ics) for phone calendars
 // Error `code`s let the page show its own translated message.
 import { getSql } from './_db.js'
@@ -162,12 +163,43 @@ async function state(sql, s) {
 
   return {
     student: { name: s.name, level: s.level, lessonType: s.lesson_type, subjects: s.subjects, lang: s.lang },
+    profile: await profileOf(sql, s.id),
     history, progress: monthProgress(stu, requests), fees, announcements: news, calendarToken: await calendarToken(sql, s),
     weekly: weekly.map((w) => ({ weekday: w.weekday, start: w.start, end: w.end, from: w.from || null, until: w.until || null })),
     lessons, requests, noticeHours: NOTICE_HOURS, weeksAhead: WEEKS_AHEAD, today, lastDay: dates[dates.length - 1], startDay: startDay || null,
     // Other confirmed students' lessons, shown only as "occupied" (never who).
     busy: await occupied(sql, s.id, dates),
   }
+}
+
+const PROFILE_COLUMNS = `name, phone, school, to_char(birthday, 'YYYY-MM-DD') AS birthday, email, address, parent_name, parent_relation, parent_phone, lang`
+async function profileOf(sql, id) {
+  const [p] = await sql.query(`SELECT ${PROFILE_COLUMNS} FROM students WHERE id = $1`, [id])
+  return p
+}
+
+/** What a student may change themselves. Name, level and the login number stay with the tutor. */
+async function saveProfile(res, sql, s, b) {
+  const f = {
+    school: str(b.school, 120) || null,
+    birthday: b.birthday ? (isDate(b.birthday) && b.birthday <= todayMY() ? b.birthday : NaN) : null,
+    email: str(b.email, 120) || null,
+    address: str(b.address, 300) || null,
+    parent_name: str(b.parentName, 80) || null,
+    parent_relation: ['mother', 'father', 'guardian'].includes(b.parentRelation) ? b.parentRelation : null,
+    parent_phone: b.parentPhone ? normalPhone(b.parentPhone) : null,
+    lang: b.lang === 'zh' ? 'zh' : 'en',
+  }
+  if (Number.isNaN(f.birthday)) return fail(res, 400, 'Invalid birthday', 'birthday')
+  if (f.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email)) return fail(res, 400, 'Invalid email', 'email')
+  if (f.parent_phone && (f.parent_phone.length < 9 || f.parent_phone.length > 15)) return fail(res, 400, 'Invalid phone', 'phone')
+  const before = await profileOf(sql, s.id)
+  await sql`UPDATE students SET school = ${f.school}, birthday = ${f.birthday}, email = ${f.email}, address = ${f.address},
+    parent_name = ${f.parent_name}, parent_relation = ${f.parent_relation}, parent_phone = ${f.parent_phone}, lang = ${f.lang} WHERE id = ${s.id}`
+  const after = await profileOf(sql, s.id)
+  const changed = Object.keys(f).filter((k) => (before[k] ?? null) !== (after[k] ?? null))
+  if (changed.length) await notify(`Kangyan: ${s.name} updated their profile`, `${s.name} changed: ${changed.map((k) => `${k.replace('_', ' ')} → ${after[k] ?? '(removed)'}`).join('\n')}`)
+  return send(res, 200, { ok: true, profile: after })
 }
 
 async function createRequest(res, sql, s, b) {
@@ -270,6 +302,7 @@ export default async function handler(req, res) {
       const [u] = await sql`UPDATE students SET pin_hash = ${hashPin(b.next)}, pin_enc = ${encryptPin(b.next)} WHERE id = ${s.id} RETURNING *`
       return send(res, 200, { ok: true, token: issueStudentToken(u) })
     }
+    if (b.action === 'profile') return await saveProfile(res, sql, s, b)
     return fail(res, 400, 'Unknown action', 'invalid')
   } catch (err) {
     console.error('[api/student]', err)

@@ -6,7 +6,7 @@ import { api } from './lib.jsx'
 const SAMPLE = {
   name: 'Mei Ling', class: 'Private 1-to-1', level: 'Form 4', subjects: 'Physics, Chemistry', times: 'Mon 5:30–7 PM', lessons: 'Online',
   link: 'https://kangyan.work/student', phone: '012-345 6789', pin: '482913', what: 'moving your lesson on Wed 11 Nov to Tue 10 Nov 2:30–4 PM',
-  reply: '\n\nSee you then!', month: 'November 2026', amount: '280', due: '1 Nov',
+  reply: '\n\nSee you then!', month: 'November 2026', amount: '280', due: '1 Nov', student: 'Mei Ling',
 }
 
 function Editor({ t, value, onChange }) {

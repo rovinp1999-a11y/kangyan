@@ -127,51 +127,7 @@ export function downloadCsv(rows) {
 export const sortSlots = (list) =>
   [...list].sort((a, b) => a.weekday - b.weekday || a.start.localeCompare(b.start))
 
-/* ------------------------------------------------------------------ */
-/* icons                                                               */
-/* ------------------------------------------------------------------ */
-
-export const ICONS = {
-  inbox: 'M22 12h-6l-2 3h-4l-2-3H2 M5.45 5.11L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-6.89A2 2 0 0016.76 4H7.24a2 2 0 00-1.79 1.11z',
-  calendar: 'M5 4h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2z M16 2v4 M8 2v4 M3 10h18',
-  refresh: 'M23 4v6h-6 M1 20v-6h6 M3.51 9a9 9 0 0114.85-3.36L23 10 M1 14l4.64 4.36A9 9 0 0020.49 15',
-  logout: 'M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4 M16 17l5-5-5-5 M21 12H9',
-  mail: 'M4 4h16a2 2 0 012 2v12a2 2 0 01-2 2H4a2 2 0 01-2-2V6a2 2 0 012-2z M22 6l-10 7L2 6',
-  chat: 'M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z',
-  phone: 'M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.13.96.36 1.9.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0122 16.92z',
-  copy: 'M9 9h11a2 2 0 012 2v9a2 2 0 01-2 2H11a2 2 0 01-2-2z M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1',
-  search: 'M11 19a8 8 0 100-16 8 8 0 000 16z M21 21l-4.35-4.35',
-  chevron: 'M6 9l6 6 6-6',
-  check: 'M20 6L9 17l-5-5',
-  trash: 'M3 6h18 M8 6V4h8v2 M19 6l-1 14H6L5 6',
-  sort: 'M3 6h18 M6 12h12 M10 18h4',
-  plus: 'M12 5v14 M5 12h14',
-  school: 'M3 9l9-5 9 5-9 5-9-5z M7 11.2V16c0 1.4 2.2 3 5 3s5-1.6 5-3v-4.8',
-  pin: 'M12 21s-7-6.2-7-11.5A7 7 0 0112 2.5a7 7 0 017 7C19 14.8 12 21 12 21z M12 12a2.5 2.5 0 100-5 2.5 2.5 0 000 5z',
-  x: 'M18 6L6 18 M6 6l12 12',
-  note: 'M14 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V9z M14 3v6h6 M8 13h8 M8 17h5',
-  edit: 'M12 20h9 M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z',
-  download: 'M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4 M7 10l5 5 5-5 M12 15V3',
-  cards: 'M3 3h8v8H3z M13 3h8v8h-8z M3 13h8v8H3z M13 13h8v8h-8z',
-  list: 'M8 6h13 M8 12h13 M8 18h13 M3 6h.01 M3 12h.01 M3 18h.01',
-  clock: 'M12 22a10 10 0 100-20 10 10 0 000 20z M12 6v6l4 2',
-  chart: 'M3 3v18h18 M7 15v2 M11 11v6 M15 7v10 M19 12v5',
-  key: 'M15 7a4 4 0 11-7.75 1.4L3 13.6V17h3.4v-2.2h2.2v-2.2l1.3-1.3A4 4 0 0115 7z M15.5 7.5h.01',
-  cash: 'M2 6h20v12H2z M12 15a3 3 0 100-6 3 3 0 000 6z M6 12h.01 M18 12h.01',
-  megaphone: 'M3 11v2a1 1 0 001 1h2l5 4V6L6 10H4a1 1 0 00-1 1z M15 8a5 5 0 010 8 M18 5a9 9 0 010 14',
-  menu: 'M4 6h16 M4 12h16 M4 18h16',
-    users: 'M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2 M9 11a4 4 0 100-8 4 4 0 000 8z M22 21v-2a4 4 0 00-3-3.87 M16 3.13a4 4 0 010 7.75',
-  grid: 'M3 3h18v18H3z M3 9h18 M3 15h18 M9 3v18 M15 3v18',
-  group: 'M9 11a4 4 0 100-8 4 4 0 000 8z M2 21v-1a6 6 0 016-6h2a6 6 0 016 6v1 M17 3.5a4 4 0 010 7.5 M22 21v-1a6 6 0 00-4-5.6',
-}
-
-export function Icon({ name, className = '' }) {
-  return (
-    <svg className={`ic ${className}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d={ICONS[name]} />
-    </svg>
-  )
-}
+export { ICONS, Icon } from '../components/Icon.jsx'
 
 
 export const KIND_SHORT = { private: '1-to-1', group: 'Group', both: 'Both' }

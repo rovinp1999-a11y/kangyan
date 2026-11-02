@@ -1,5 +1,5 @@
-// Existing students: their regular weekly slot, login PIN, and the requests they send
-// from the student page (move one lesson, absence, new regular time).
+// Existing students: one row each, a profile with their details and parent, their weekly
+// lessons, login PIN, and the requests they send from the student page.
 import { useEffect, useMemo, useState } from 'react'
 import { LEVEL_GROUPS, SUBJECTS, WEEKDAYS, WEEKDAYS_SHORT, formatTime, slotLabel } from '../../shared/constants.js'
 import { dateLabel, todayMY, firstOn } from '../../shared/lessons.js'
@@ -133,9 +133,26 @@ export const formFromStudent = (s) => ({
   // Keep from / until (set by "this and all following lessons"); lessons already over are left out.
   lessons: (s.lessons || []).filter((l) => !l.until || l.until >= todayMY()).map(({ weekday, start, end, from, until }) => ({ weekday, start, end, ...(from ? { from } : {}), ...(until ? { until } : {}) })),
   startDate: s.start_date || '', lang: s.lang, notes: s.notes || '', hourlyRate: s.hourly_rate ?? '',
+  school: s.school || '', birthday: s.birthday || '', email: s.email || '', address: s.address || '',
+  parentName: s.parent_name || '', parentRelation: s.parent_relation || '', parentPhone: localPhone(s.parent_phone),
 })
 
-const BLANK = { name: '', phone: '', level: '', lessonType: 'private', subjects: [], lessons: [NEW_LESSON], startDate: '', lang: 'en', notes: '', hourlyRate: '' }
+const BLANK = {
+  name: '', phone: '', level: '', lessonType: 'private', subjects: [], lessons: [NEW_LESSON], startDate: '', lang: 'en', notes: '', hourlyRate: '',
+  school: '', birthday: '', email: '', address: '', parentName: '', parentRelation: '', parentPhone: '',
+}
+const RELATION = { mother: 'Mother', father: 'Father', guardian: 'Guardian' }
+const lessonsNow = (s) => (s.lessons || []).filter((l) => !l.until || l.until >= todayMY())
+const ageOn = (birthday) => {
+  if (!birthday) return null
+  const t = todayMY()
+  return Number(t.slice(0, 4)) - Number(birthday.slice(0, 4)) - (t.slice(5) < birthday.slice(5) ? 1 : 0)
+}
+const birthdayText = (b) => {
+  const [y, m, d] = b.split('-').map(Number)
+  return `${d} ${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][m - 1]} ${y} · ${ageOn(b)} years old`
+}
+const parentLabel = (s) => [s.parent_name, RELATION[s.parent_relation]].filter(Boolean).join(' · ')
 
 /** One row per weekly lesson: day, start and end. Shows when it matches a timetable slot. */
 function WeeklyLessons({ value, onChange, slots, lessonType, own = [] }) {
@@ -171,7 +188,7 @@ function WeeklyLessons({ value, onChange, slots, lessonType, own = [] }) {
               {l.until && ` · last lesson ${dateLabel(l.until)}`}
               {!slot ? ' · not one of your timetable slots'
                 : slot.status === 'taken' && !own.some((o) => o.weekday === l.weekday && o.start === l.start && o.end === l.end)
-                  ? ' · ⚠ this timetable slot is already taken'
+                  ? ' · this timetable slot is already taken'
                   : ` · matches your timetable slot${lessonType === 'private' ? ' (will be marked taken)' : ''}`}
             </small>
           </div>
@@ -194,52 +211,163 @@ function StudentForm({ initial, slots, onSave, onCancel, busy }) {
     <form className="sform" onSubmit={(e) => { e.preventDefault(); onSave(f) }}>
       <h2>{editing ? `Edit ${initial.name}` : initial.enquiryId ? 'Add student from enquiry' : 'Add a student'}</h2>
       {!editing && initial.enquiryId && <p className="sform__note">Filled in from the enquiry. Check the details, set their weekly lessons, then save. The enquiry is marked confirmed.</p>}
-      <label className="sform__f"><span>Student name</span><input value={f.name} onChange={(e) => set('name', e.target.value)} required minLength={2} maxLength={80} /></label>
-      <label className="sform__f"><span>WhatsApp number (student or parent)</span><input type="tel" value={f.phone} onChange={(e) => set('phone', e.target.value)} required placeholder="012-345 6789" /></label>
-      <div className="sform__row">
-        <label className="sform__f"><span>Level</span>
-          <select value={f.level} onChange={(e) => set('level', e.target.value)}>
-            <option value="">—</option>
-            {LEVEL_GROUPS.map((g) => <optgroup key={g.key} label={g.key.toUpperCase()}>{g.levels.map((l) => <option key={l} value={l}>{l}</option>)}</optgroup>)}
-          </select>
-        </label>
-        <div className="sform__f"><span>Class</span>
-          <div className="kindpick" role="group" aria-label="Class type">
-            {['private', 'group'].map((k) => (
-              <button key={k} type="button" className={`kindpick__b kindpick__b--${k} ${f.lessonType === k ? 'is-on' : ''}`} aria-pressed={f.lessonType === k} onClick={() => set('lessonType', k)}>{KIND_SHORT[k]}</button>
+
+      <fieldset className="sform__sec">
+        <legend>Student</legend>
+        <label className="sform__f"><span>Name</span><input value={f.name} onChange={(e) => set('name', e.target.value)} required minLength={2} maxLength={80} /></label>
+        <div className="sform__row">
+          <label className="sform__f"><span>School</span><input value={f.school} onChange={(e) => set('school', e.target.value)} maxLength={120} /></label>
+          <label className="sform__f"><span>Birthday</span><input type="date" value={f.birthday} max={todayMY()} onChange={(e) => set('birthday', e.target.value)} /></label>
+        </div>
+        <div className="sform__row">
+          <label className="sform__f"><span>Level</span>
+            <select value={f.level} onChange={(e) => set('level', e.target.value)}>
+              <option value="">—</option>
+              {LEVEL_GROUPS.map((g) => <optgroup key={g.key} label={g.key.toUpperCase()}>{g.levels.map((l) => <option key={l} value={l}>{l}</option>)}</optgroup>)}
+            </select>
+          </label>
+          <div className="sform__f"><span>Class</span>
+            <div className="kindpick" role="group" aria-label="Class type">
+              {['private', 'group'].map((k) => (
+                <button key={k} type="button" className={`kindpick__b kindpick__b--${k} ${f.lessonType === k ? 'is-on' : ''}`} aria-pressed={f.lessonType === k} onClick={() => set('lessonType', k)}>{KIND_SHORT[k]}</button>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="sform__f"><span>Subjects</span>
+          <div className="sform__subs">
+            {SUBJECTS.map((x) => (
+              <label key={x} className={`sform__sub ${f.subjects.includes(x) ? 'is-on' : ''}`}>
+                <input type="checkbox" checked={f.subjects.includes(x)} onChange={() => set('subjects', f.subjects.includes(x) ? f.subjects.filter((y) => y !== x) : [...f.subjects, x])} />{x}
+              </label>
             ))}
           </div>
         </div>
-      </div>
-      <div className="sform__f"><span>Subjects</span>
-        <div className="sform__subs">
-          {SUBJECTS.map((x) => (
-            <label key={x} className={`sform__sub ${f.subjects.includes(x) ? 'is-on' : ''}`}>
-              <input type="checkbox" checked={f.subjects.includes(x)} onChange={() => set('subjects', f.subjects.includes(x) ? f.subjects.filter((y) => y !== x) : [...f.subjects, x])} />{x}
-            </label>
-          ))}
+      </fieldset>
+
+      <fieldset className="sform__sec">
+        <legend>Contact &amp; login</legend>
+        <label className="sform__f"><span>Student's WhatsApp (used to log in)</span><input type="tel" value={f.phone} onChange={(e) => set('phone', e.target.value)} required placeholder="012-345 6789" /></label>
+        <div className="sform__row">
+          <label className="sform__f"><span>Email</span><input type="email" value={f.email} onChange={(e) => set('email', e.target.value)} maxLength={120} /></label>
+          <label className="sform__f"><span>Messages in</span>
+            <select value={f.lang} onChange={(e) => set('lang', e.target.value)}><option value="en">English</option><option value="zh">中文</option></select>
+          </label>
         </div>
-      </div>
-      <div className="sform__f"><span>Weekly lessons</span>
+        <label className="sform__f"><span>Address (for in-person lessons)</span><input value={f.address} onChange={(e) => set('address', e.target.value)} maxLength={300} /></label>
+      </fieldset>
+
+      <fieldset className="sform__sec">
+        <legend>Parent / guardian</legend>
+        <div className="sform__row">
+          <label className="sform__f"><span>Name</span><input value={f.parentName} onChange={(e) => set('parentName', e.target.value)} maxLength={80} placeholder="e.g. Mrs Tan" /></label>
+          <label className="sform__f"><span>Relation</span>
+            <select value={f.parentRelation} onChange={(e) => set('parentRelation', e.target.value)}>
+              <option value="">—</option>{Object.entries(RELATION).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+          </label>
+        </div>
+        <label className="sform__f"><span>Parent's WhatsApp</span>
+          <input type="tel" value={f.parentPhone} onChange={(e) => set('parentPhone', e.target.value)} placeholder="012-345 6789" />
+          <small>Fee reminders are sent here. Can be the same as the student's number.</small>
+        </label>
+      </fieldset>
+
+      <fieldset className="sform__sec">
+        <legend>Lessons &amp; fees</legend>
         <WeeklyLessons value={f.lessons} onChange={(v) => set('lessons', v)} slots={slots} lessonType={f.lessonType} own={initial.id ? initial.lessons : []} />
-      </div>
-      {f.lessonType === 'private' && (
-        <label className="sform__f"><span>Hourly rate (RM, for the fee suggestion)</span>
-          <input inputMode="numeric" value={f.hourlyRate} placeholder="70" onChange={(e) => set('hourlyRate', e.target.value.replace(/[^\d]/g, ''))} />
-          <small>Their monthly fee is suggested as this rate × that month's hours. You can still change any month on the Fees tab.</small>
-        </label>
-      )}
-      <div className="sform__row">
-        <label className="sform__f"><span>Messages in</span>
-          <select value={f.lang} onChange={(e) => set('lang', e.target.value)}><option value="en">English</option><option value="zh">中文</option></select>
-        </label>
-      </div>
-      <label className="sform__f"><span>Private notes</span><textarea rows={2} value={f.notes} onChange={(e) => set('notes', e.target.value)} maxLength={2000} /></label>
+        {f.lessonType === 'private' && (
+          <label className="sform__f"><span>Hourly rate (RM, for the fee suggestion)</span>
+            <input inputMode="numeric" value={f.hourlyRate} placeholder="70" onChange={(e) => set('hourlyRate', e.target.value.replace(/[^\d]/g, ''))} />
+            <small>Their monthly fee is suggested as this rate × that month's hours. You can still change any month on the Fees tab.</small>
+          </label>
+        )}
+      </fieldset>
+
+      <label className="sform__f"><span>Private notes</span><textarea rows={3} value={f.notes} onChange={(e) => set('notes', e.target.value)} maxLength={2000} /></label>
       <div className="sform__acts">
         <button type="button" className="act" onClick={onCancel}>Cancel</button>
         <button className="btn btn--accent" disabled={busy}>{busy ? 'Saving…' : editing ? 'Save changes' : 'Add student & create PIN'}</button>
       </div>
     </form>
+  )
+}
+
+/** Everything about one student, opened from their row. */
+function StudentProfile({ s, waiting, pin, onEdit, onShowPin, onNewPin, onSendLogin, onActive, onDelete }) {
+  const lessons = lessonsNow(s)
+  const Row = ({ k, children }) => (children ? <><dt>{k}</dt><dd>{children}</dd></> : null)
+  return (
+    <div className="sprof">
+      <header className="sprof__head">
+        <span className={`savatar savatar--${s.lesson_type}`} aria-hidden="true">{s.name.trim()[0]?.toUpperCase()}</span>
+        <div>
+          <h2>{s.name}</h2>
+          <p>{[s.level, KIND_SHORT[s.lesson_type], (s.subjects || []).join(', ')].filter(Boolean).join(' · ')}</p>
+          {!s.active && <span className="sprof__off">Deactivated · can't log in</span>}
+        </div>
+      </header>
+      <div className="sprof__acts">
+        <button type="button" className="btn btn--accent btn--sm" onClick={onEdit}><Icon name="edit" />Edit profile</button>
+        {s.last_login
+          ? <a className="act act--wa" href={waLink(s.phone, pageMessage(s))} target="_blank" rel="noopener noreferrer"><Icon name="chat" />WhatsApp student</a>
+          : <button type="button" className="act act--wa" onClick={onSendLogin}><Icon name="chat" />Send login details</button>}
+        {s.parent_phone && <a className="act act--wa" href={waLink(s.parent_phone)} target="_blank" rel="noopener noreferrer"><Icon name="chat" />WhatsApp parent</a>}
+      </div>
+      {waiting > 0 && <p className="sprof__wait">{waiting} request{waiting === 1 ? '' : 's'} waiting — see Requests waiting above.</p>}
+
+      <section className="sprof__sec">
+        <h3>Weekly lessons</h3>
+        {lessons.length ? lessons.map((l) => (
+          <p className="scard__slot" key={`${l.weekday}-${l.start}-${l.from || ''}`}>
+            <Icon name="calendar" />Every {weeklyText(l)}
+            {(l.from && l.from > todayMY()) || l.until ? <small className="scard__range">{l.from && l.from > todayMY() ? `from ${dateLabel(l.from)}` : ''}{l.until ? ` until ${dateLabel(l.until)}` : ''}</small> : null}
+          </p>
+        )) : <p className="scard__slot is-none"><Icon name="calendar" />No weekly lessons yet</p>}
+        {s.lesson_type === 'private' && <p className="sprof__small">Hourly rate RM{s.hourly_rate || 70}{s.hourly_rate ? '' : ' (default)'}</p>}
+      </section>
+
+      <section className="sprof__sec">
+        <h3>Student</h3>
+        <dl className="sprof__dl">
+          <Row k="School">{s.school}</Row>
+          <Row k="Birthday">{s.birthday && birthdayText(s.birthday)}</Row>
+          <Row k="WhatsApp"><a href={`tel:+${s.phone}`}>{localPhone(s.phone)}</a> <small>login</small></Row>
+          <Row k="Email">{s.email && <a href={`mailto:${s.email}`}>{s.email}</a>}</Row>
+          <Row k="Address">{s.address}</Row>
+          <Row k="Messages">{s.lang === 'zh' ? '中文' : 'English'}</Row>
+        </dl>
+      </section>
+
+      <section className="sprof__sec">
+        <h3>Parent / guardian</h3>
+        {s.parent_name || s.parent_phone ? (
+          <dl className="sprof__dl">
+            <Row k="Name">{parentLabel(s)}</Row>
+            <Row k="WhatsApp">{s.parent_phone && <a href={`tel:+${s.parent_phone}`}>{localPhone(s.parent_phone)}</a>}</Row>
+          </dl>
+        ) : <p className="sprof__empty">No parent added. <button type="button" className="adm-clear" onClick={onEdit}>Add parent</button><br />Fee reminders go to the student's number until you add one.</p>}
+      </section>
+
+      {s.notes && <section className="sprof__sec"><h3>Private notes</h3><p className="scard__notes">{s.notes}</p></section>}
+
+      <section className="sprof__sec">
+        <h3>Login</h3>
+        <p className="sprof__small">{s.last_login ? `Last seen ${timeAgo(s.last_login)}` : 'Not logged in yet'}</p>
+        {pin !== undefined && (pin
+          ? <p className="scard__pin">PIN <b>{pin}</b></p>
+          : <p className="scard__pin is-none">This PIN was set before PINs could be viewed. Press New PIN to give them one you can see.</p>)}
+        <div className="sprof__row">
+          <button type="button" className="act" onClick={onShowPin}><Icon name="key" />{pin !== undefined ? 'Hide PIN' : 'Show PIN'}</button>
+          <button type="button" className="act" onClick={onNewPin}>New PIN</button>
+        </div>
+      </section>
+
+      <footer className="sprof__foot">
+        <button type="button" className="act" onClick={onActive}>{s.active ? 'Deactivate' : 'Reactivate'}</button>
+        <button type="button" className="act act--danger" onClick={onDelete}><Icon name="trash" />Delete student</button>
+      </footer>
+    </div>
   )
 }
 
@@ -265,6 +393,9 @@ export function StudentsTab({ students, setStudents, requests, setRequests, slot
   const [told, setTold] = useState(null) // { r, s, approved } → WhatsApp link after a decision
   const [q, setQ] = useState('')
   const [pins, setPins] = useState({}) // student id → PIN being shown (or null when it can't be)
+  const [openId, setOpenId] = useState(null) // student whose profile is open
+  const [show, setShow] = useState('active')
+  const [kind, setKind] = useState('')
   const fail = (e) => (e.unauthorized ? onAuthError() : notify(e.message, 'error'))
 
   useEffect(() => { if (prefill) { setForm({ ...BLANK, ...prefill }); clearPrefill() } }, [prefill, clearPrefill])
@@ -272,7 +403,12 @@ export function StudentsTab({ students, setStudents, requests, setRequests, slot
   const byId = useMemo(() => new Map(students.map((s) => [s.id, s])), [students])
   const pending = requests.filter((r) => r.status === 'pending')
   const history = requests.filter((r) => r.status !== 'pending').slice(0, 40)
-  const shown = students.filter((s) => !q.trim() || [s.name, s.phone, localPhone(s.phone), s.level, ...(s.subjects || [])].filter(Boolean).some((v) => v.toLowerCase().includes(q.trim().toLowerCase())))
+  const needle = q.trim().toLowerCase()
+  const shown = students
+    .filter((s) => (show === 'all' || (show === 'active') === s.active) && (!kind || s.lesson_type === kind))
+    .filter((s) => !needle || [s.name, s.phone, localPhone(s.phone), s.level, s.school, s.parent_name, s.parent_phone, localPhone(s.parent_phone), ...(s.subjects || [])]
+      .filter(Boolean).some((v) => v.toLowerCase().includes(needle)))
+  const open = openId != null ? byId.get(openId) : null
 
   const save = async (f) => {
     setBusy(true)
@@ -291,6 +427,7 @@ export function StudentsTab({ students, setStudents, requests, setRequests, slot
         const { student, pin: p } = await api('/api/admin/students', { method: 'POST', body: { action: 'create', ...body } })
         setStudents((list) => [...list, student].sort((a, b) => a.name.localeCompare(b.name)))
         setPin({ s: student, pin: p })
+        setOpenId(student.id)
         onCreated?.(student)
       }
       setForm(null)
@@ -343,6 +480,7 @@ export function StudentsTab({ students, setStudents, requests, setRequests, slot
     try {
       await api('/api/admin/students', { method: 'POST', body: { action: 'delete', id: s.id } })
       setStudents((list) => list.filter((x) => x.id !== s.id))
+      setOpenId(null)
       setRequests((list) => list.filter((x) => x.student_id !== s.id))
       notify(`Deleted ${s.name}`)
       refreshSlots()
@@ -382,52 +520,51 @@ export function StudentsTab({ students, setStudents, requests, setRequests, slot
           <h2>Students <span className="sblock__n">{students.filter((s) => s.active).length} active</span></h2>
           <button type="button" className="btn btn--accent btn--sm" onClick={() => setForm(BLANK)}><Icon name="plus" />Add student</button>
         </header>
-        {students.length > 4 && (
-          <label className="adm-search"><Icon name="search" /><input type="search" placeholder="Search students" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search students" /></label>
+        {students.length > 0 && (
+          <div className="adm-filters">
+            <label className="adm-search"><Icon name="search" /><input type="search" placeholder="Search name, school, parent, phone" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search students" /></label>
+            <select className="adm-select" value={show} onChange={(e) => setShow(e.target.value)} aria-label="Show">
+              <option value="active">Active</option><option value="off">Deactivated</option><option value="all">All students</option>
+            </select>
+            <select className="adm-select" value={kind} onChange={(e) => setKind(e.target.value)} aria-label="Class">
+              <option value="">1-to-1 &amp; group</option><option value="private">{KIND_SHORT.private}</option><option value="group">{KIND_SHORT.group}</option>
+            </select>
+          </div>
         )}
         {students.length === 0 ? (
           <p className="cempty">No students yet. Add one here, or use “Add as student” on a confirmed enquiry.</p>
+        ) : !shown.length ? (
+          <p className="cempty">No students match. <button type="button" className="adm-clear" onClick={() => { setQ(''); setShow('all'); setKind('') }}>Show everyone</button></p>
         ) : (
-          <div className="slist">
+          <div className="srows" role="table" aria-label="Students">
+            <div className="srow srow--head" role="row">
+              <span role="columnheader">Student</span><span role="columnheader">Weekly lessons</span><span role="columnheader">Parent</span><span role="columnheader">Login</span>
+            </div>
             {shown.map((s) => {
               const waiting = pending.filter((r) => r.student_id === s.id).length
+              const lessons = lessonsNow(s)
               return (
-                <article key={s.id} className={`scard ${s.active ? '' : 'is-off'}`}>
-                  <header>
-                    <div>
-                      <h3>{s.name}</h3>
-                      <p>{[s.level, KIND_SHORT[s.lesson_type], (s.subjects || []).join(', ')].filter(Boolean).join(' · ')}</p>
-                    </div>
-                    {waiting > 0 && <span className="badge" title="Requests waiting">{waiting}</span>}
-                  </header>
-                  <div className="scard__slots">
-                    {(s.lessons || []).length
-                      ? s.lessons.filter((l) => !l.until || l.until >= todayMY()).map((l) => (
-                        <p className="scard__slot" key={`${l.weekday}-${l.start}-${l.from || ''}`}>
-                          <Icon name="calendar" />Every {weeklyText(l)}
-                          {(l.from && l.from > todayMY()) || l.until ? <small className="scard__range">{l.from && l.from > todayMY() ? `from ${dateLabel(l.from)}` : ''}{l.until ? ` until ${dateLabel(l.until)}` : ''}</small> : null}
-                        </p>
-                      ))
-                      : <p className="scard__slot is-none"><Icon name="calendar" />No weekly lessons yet</p>}
-                  </div>
-                  <p className="scard__meta">{localPhone(s.phone)} · {s.last_login ? `last seen ${timeAgo(s.last_login)}` : 'not logged in yet'}{s.active ? '' : ' · deactivated'}</p>
-                  {s.notes && <p className="scard__notes">{s.notes}</p>}
-                  {s.id in pins && (
-                    pins[s.id]
-                      ? <p className="scard__pin">PIN <b>{pins[s.id]}</b></p>
-                      : <p className="scard__pin is-none">This PIN was set before PINs could be viewed. Press New PIN to give them one you can see.</p>
-                  )}
-                  <footer>
-                    <button type="button" className="act" onClick={() => setForm(formFromStudent(s))}><Icon name="edit" />Edit</button>
-                    <button type="button" className="act" onClick={() => showPin(s)}><Icon name="key" />{s.id in pins ? 'Hide PIN' : 'Show PIN'}</button>
-                    <button type="button" className="act" onClick={() => resetPin(s)}>New PIN</button>
-                    {s.last_login
-                      ? <a className="act act--wa" href={waLink(s.phone, pageMessage(s))} target="_blank" rel="noopener noreferrer" title="Opens WhatsApp with the page link and how to log in"><Icon name="chat" />WhatsApp</a>
-                      : <button type="button" className="act act--wa" onClick={() => sendLogin(s)} title="Creates a PIN and opens WhatsApp with the login details"><Icon name="chat" />Send login details</button>}
-                    <button type="button" className="act" onClick={() => setActive(s, !s.active)}>{s.active ? 'Deactivate' : 'Reactivate'}</button>
-                    <button type="button" className="icon-btn icon-btn--danger" onClick={() => remove(s)} aria-label={`Delete ${s.name}`}><Icon name="trash" /></button>
-                  </footer>
-                </article>
+                <button type="button" role="row" key={s.id} className={`srow ${s.active ? '' : 'is-off'}`} onClick={() => setOpenId(s.id)} aria-label={`Open ${s.name}`}>
+                  <span className="srow__who" role="cell">
+                    <span className={`savatar savatar--${s.lesson_type}`} aria-hidden="true">{s.name.trim()[0]?.toUpperCase()}</span>
+                    <span className="srow__name">
+                      <b>{s.name}{waiting > 0 && <span className="badge" title="Requests waiting">{waiting}</span>}</b>
+                      <small>{[s.level, KIND_SHORT[s.lesson_type], (s.subjects || []).join(', ')].filter(Boolean).join(' · ')}</small>
+                    </span>
+                  </span>
+                  <span className="srow__lessons" role="cell">
+                    {lessons.length ? lessons.map((l) => <span key={`${l.weekday}-${l.start}-${l.from || ''}`}>{WEEKDAYS_SHORT[l.weekday]} {shortRange(l.start, l.end, 'en')}</span>) : <span className="is-none">No weekly lessons</span>}
+                  </span>
+                  <span className="srow__parent" role="cell">
+                    {s.parent_name || s.parent_phone
+                      ? <><b>{parentLabel(s) || 'Parent'}</b><small>{localPhone(s.parent_phone)}</small></>
+                      : <small className="is-none">No parent added</small>}
+                  </span>
+                  <span className="srow__login" role="cell">
+                    <small>{!s.active ? 'Deactivated' : s.last_login ? `seen ${timeAgo(s.last_login)}` : 'not logged in yet'}</small>
+                  </span>
+                  <Icon name="chevron" />
+                </button>
               )
             })}
           </div>
@@ -453,9 +590,17 @@ export function StudentsTab({ students, setStudents, requests, setRequests, slot
         </details>
       )}
 
-      {form && (
+      {form ? (
         <Drawer onClose={() => setForm(null)} label="Student details">
           <StudentForm initial={form} slots={slots} busy={busy} onSave={save} onCancel={() => setForm(null)} />
+        </Drawer>
+      ) : open && !pin && (
+        <Drawer onClose={() => setOpenId(null)} label={`${open.name}'s profile`}>
+          <StudentProfile
+            s={open} waiting={pending.filter((r) => r.student_id === open.id).length} pin={pins[open.id]}
+            onEdit={() => setForm(formFromStudent(open))} onShowPin={() => showPin(open)} onNewPin={() => resetPin(open)}
+            onSendLogin={() => sendLogin(open)} onActive={() => setActive(open, !open.active)} onDelete={() => remove(open)}
+          />
         </Drawer>
       )}
       {pin && (

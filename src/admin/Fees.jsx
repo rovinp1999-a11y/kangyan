@@ -1,6 +1,6 @@
 // Tuition fees by month: the suggested amount for each student (group fee by stage, or the
 // 1-to-1 hourly rate × that month's hours), an override, Paid / Unpaid, and a one-click
-// WhatsApp reminder with the amount.
+// WhatsApp reminder with the amount, sent to the parent.
 import { useMemo, useState } from 'react'
 import { addDays, todayMY } from '../../shared/lessons.js'
 import { suggestedFee, feeState, monthOf } from '../../shared/schedule.js'
@@ -54,9 +54,14 @@ export function FeesTab({ students, requests, fees, setFees, notify, onAuthError
     if (n === (r.saved?.amount ?? null)) return setDrafts(({ [r.s.id]: _, ...rest }) => rest)
     save(r, { amount: n })
   }
+  // Fee reminders go to the parent; without a parent's number, to the login number.
   const reminder = (r) => {
     const lang = r.s.lang === 'zh' ? 'zh' : 'en'
-    return fill('feeReminder', lang, { name: lang === 'zh' ? r.s.name : r.s.name.split(/\s+/)[0], month: monthName(month, lang), amount: r.amount ?? '', due: dueText(month, lang), link: SITE })
+    const parent = r.s.parent_name?.trim()
+    return fill('feeReminder', lang, {
+      name: parent || (lang === 'zh' ? '家长' : 'there'), student: lang === 'zh' ? r.s.name : r.s.name.split(/\s+/)[0],
+      month: monthName(month, lang), amount: r.amount ?? '', due: dueText(month, lang), link: SITE,
+    })
   }
 
   return (
@@ -83,6 +88,7 @@ export function FeesTab({ students, requests, fees, setFees, notify, onAuthError
               <div className="fee__who">
                 <b>{r.s.name}</b>
                 <span>{[r.s.level, KIND_SHORT[r.s.lesson_type], r.s.lesson_type === 'private' ? `RM${r.s.hourly_rate || 70}/h` : null].filter(Boolean).join(' · ')}</span>
+                {r.state !== 'paid' && <small className="fee__to">{r.s.parent_phone ? `Parent: ${[r.s.parent_name, localPhone(r.s.parent_phone)].filter(Boolean).join(' · ')}` : 'No parent number yet'}</small>}
               </div>
               <label className="fee__amt">
                 <span>RM</span>
@@ -101,8 +107,11 @@ export function FeesTab({ students, requests, fees, setFees, notify, onAuthError
                 {r.state === 'paid'
                   ? <button type="button" className="act" disabled={busy === r.s.id} onClick={() => save(r, { paid: false })}>Mark unpaid</button>
                   : <button type="button" className="btn btn--accent btn--sm" disabled={busy === r.s.id || r.amount == null} onClick={() => save(r, { paid: true, amount: r.amount })}><Icon name="check" />Mark paid</button>}
-                {r.state !== 'paid' && r.amount != null && r.s.phone && (
-                  <a className="act act--wa" href={waLink(r.s.phone, reminder(r))} target="_blank" rel="noopener noreferrer" title={`WhatsApp ${localPhone(r.s.phone)}`}><Icon name="chat" />Remind to pay</a>
+                {r.state !== 'paid' && r.amount != null && (r.s.parent_phone || r.s.phone) && (
+                  <a className="act act--wa" href={waLink(r.s.parent_phone || r.s.phone, reminder(r))} target="_blank" rel="noopener noreferrer"
+                    title={r.s.parent_phone ? `WhatsApp ${r.s.parent_name || 'parent'} · ${localPhone(r.s.parent_phone)}` : `No parent's number yet: goes to ${localPhone(r.s.phone)}. Add one in the student's profile.`}>
+                    <Icon name="chat" />{r.s.parent_phone ? 'Remind parent' : 'Remind to pay'}
+                  </a>
                 )}
               </div>
             </article>

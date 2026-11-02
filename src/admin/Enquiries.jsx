@@ -238,7 +238,7 @@ export function EnquiryTable({ rows, onOpen, studentOf = () => null }) {
             <tr key={r.id} className={r.status === 'closed' ? 'is-closed' : ''} onClick={() => onOpen(r.id)}>
               <td>
                 <button type="button" className="etable__name" onClick={(e) => { e.stopPropagation(); onOpen(r.id) }}>{r.student_name}</button>
-                <small>{[studentOf(r) && '✓ Student', ENQUIRER_LABEL[r.enquirer], r.school].filter(Boolean).join(' · ')}</small>
+                <small>{[studentOf(r) && 'Student', ENQUIRER_LABEL[r.enquirer], r.school].filter(Boolean).join(' · ')}</small>
               </td>
               <td>{r.level}</td>
               <td><span className={`want want--${typeOf(r)}`}>{KIND_SHORT[typeOf(r)]}</span></td>

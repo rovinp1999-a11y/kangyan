@@ -39,10 +39,10 @@ export const TEMPLATES = [
     zh: '{name}你好！抱歉，这次没办法安排：{what}。{reply}\n\n{link}',
   },
   {
-    key: 'feeReminder', title: 'Fee reminder', where: 'Fees → Remind to pay',
-    vars: ['name', 'month', 'amount', 'due', 'link'],
-    en: 'Hi {name}! A gentle reminder that the tuition fee for {month} is RM{amount}, due {due}. Thank you!\n\nYou can see your fees here: {link}',
-    zh: '{name}你好！温馨提醒：{month}的学费是 RM{amount}，请在{due}前缴付。谢谢！\n\n学费可以在这里查看：{link}',
+    key: 'feeReminder', title: 'Fee reminder (to the parent)', where: 'Fees → Remind parent to pay',
+    vars: ['name', 'student', 'month', 'amount', 'due', 'link'],
+    en: "Hi {name}! A gentle reminder that {student}'s tuition fee for {month} is RM{amount}, due {due}. Thank you!\n\nYou can see the fees on the student page: {link}",
+    zh: '{name}您好！温馨提醒：{student}{month}的学费是 RM{amount}，请在{due}前缴付。谢谢！\n\n学费可以在学生页面查看：{link}',
   },
 ]
 

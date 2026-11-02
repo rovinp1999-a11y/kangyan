@@ -146,6 +146,14 @@ const statements = [
   `ALTER TABLE student_requests ADD COLUMN IF NOT EXISTS to_end TEXT`,
   `UPDATE student_requests r SET to_start = to_char(a.start_time, 'HH24:MI'), to_end = to_char(a.end_time, 'HH24:MI'), to_weekday = a.weekday
      FROM availability_slots a WHERE a.id = r.to_slot_id AND r.to_start IS NULL`,
+  // fuller student profile: school, birthday, email, address, and a parent to contact (fee reminders go there)
+  `ALTER TABLE students ADD COLUMN IF NOT EXISTS school TEXT`,
+  `ALTER TABLE students ADD COLUMN IF NOT EXISTS birthday DATE`,
+  `ALTER TABLE students ADD COLUMN IF NOT EXISTS email TEXT`,
+  `ALTER TABLE students ADD COLUMN IF NOT EXISTS address TEXT`,
+  `ALTER TABLE students ADD COLUMN IF NOT EXISTS parent_name TEXT`,
+  `ALTER TABLE students ADD COLUMN IF NOT EXISTS parent_relation TEXT`,
+  `ALTER TABLE students ADD COLUMN IF NOT EXISTS parent_phone TEXT`,
 ]
 for (const s of statements) await sql.query(s)
 

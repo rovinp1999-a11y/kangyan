@@ -26,6 +26,7 @@ import { SLOT_COLUMNS } from '../slots.js'
 import { isDate, weekdayOf, dateLabel, covers, addDays, todayMY } from '../../shared/lessons.js'
 
 const STUDENT_COLUMNS = `s.id, s.created_at, s.name, s.phone, s.level, s.lesson_type, s.subjects, s.lessons, s.hourly_rate,
+  s.school, to_char(s.birthday, 'YYYY-MM-DD') AS birthday, s.email, s.address, s.parent_name, s.parent_relation, s.parent_phone,
   to_char(s.start_date, 'YYYY-MM-DD') AS start_date, s.active, s.enquiry_id, s.lang, s.notes, s.last_login`
 const REQUEST_COLUMNS = `r.id, r.created_at, r.student_id, r.kind, to_char(r.lesson_date, 'YYYY-MM-DD') AS lesson_date, r.from_lesson,
   r.to_slot_id, to_char(r.to_date, 'YYYY-MM-DD') AS to_date, r.to_weekday, r.to_start, r.to_end, r.to_label, r.recording, r.note, r.status, r.reply, r.decided_at, r.by_tutor`
@@ -130,6 +131,16 @@ function fields(b, partial) {
   if (has('notes')) out.notes = str(b.notes, 2000) || null
   if (has('hourlyRate')) { const n = b.hourlyRate === '' || b.hourlyRate == null ? null : Number(b.hourlyRate); if (n !== null && !(Number.isInteger(n) && n >= 0 && n <= 2000)) return 'Hourly rate must be a whole number'; out.hourly_rate = n }
   if (has('lang')) out.lang = b.lang === 'zh' ? 'zh' : 'en'
+  if (has('school')) out.school = str(b.school, 120) || null
+  if (has('birthday')) { out.birthday = b.birthday ? (isDate(b.birthday) ? b.birthday : NaN) : null; if (Number.isNaN(out.birthday)) return 'Invalid birthday' }
+  if (has('email')) { out.email = str(b.email, 120) || null; if (out.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(out.email)) return 'Please check the email address' }
+  if (has('address')) out.address = str(b.address, 300) || null
+  if (has('parentName')) out.parent_name = str(b.parentName, 80) || null
+  if (has('parentRelation')) out.parent_relation = ['mother', 'father', 'guardian'].includes(b.parentRelation) ? b.parentRelation : null
+  if (has('parentPhone')) {
+    out.parent_phone = b.parentPhone ? normalPhone(b.parentPhone) : null
+    if (out.parent_phone && (out.parent_phone.length < 9 || out.parent_phone.length > 15)) return "Please enter a valid parent's WhatsApp number"
+  }
   if (partial && 'active' in b) out.active = b.active === true
   return out
 }
@@ -160,8 +171,10 @@ export default async function handler(req, res) {
       const enquiryId = isDbId(Number(b.enquiryId)) ? Number(b.enquiryId) : null
       const pin = await uniquePin(sql, f.phone)
       const [row] = await sql`
-        INSERT INTO students (name, phone, pin_hash, pin_enc, level, lesson_type, subjects, lessons, start_date, enquiry_id, lang, notes, hourly_rate)
-        VALUES (${f.name}, ${f.phone}, ${hashPin(pin)}, ${encryptPin(pin)}, ${f.level}, ${f.lesson_type}, ${f.subjects}, ${JSON.stringify(lessons)}::jsonb, ${f.start_date}, ${enquiryId}, ${f.lang}, ${f.notes}, ${f.hourly_rate ?? null})
+        INSERT INTO students (name, phone, pin_hash, pin_enc, level, lesson_type, subjects, lessons, start_date, enquiry_id, lang, notes, hourly_rate,
+          school, birthday, email, address, parent_name, parent_relation, parent_phone)
+        VALUES (${f.name}, ${f.phone}, ${hashPin(pin)}, ${encryptPin(pin)}, ${f.level}, ${f.lesson_type}, ${f.subjects}, ${JSON.stringify(lessons)}::jsonb, ${f.start_date}, ${enquiryId}, ${f.lang}, ${f.notes}, ${f.hourly_rate ?? null},
+          ${f.school}, ${f.birthday}, ${f.email}, ${f.address}, ${f.parent_name}, ${f.parent_relation}, ${f.parent_phone})
         RETURNING id`
       const created = await getStudent(sql, row.id)
       await syncSlots(sql, null, created)

@@ -1,13 +1,16 @@
-// Page for existing students and parents: log in with WhatsApp number + PIN, see the
-// regular lesson and the next few weeks, and ask to move a lesson, report an absence
-// or change the regular time. The tutor approves or rejects each request in the admin.
+// Page for existing students and parents: log in with WhatsApp number + PIN, then a small
+// dashboard: home (next lesson, this month, fees, requests), calendar, history & fees,
+// requests, and their own profile. The tutor approves or rejects each request in the admin.
 import { useCallback, useEffect, useState } from 'react'
 import { useLang, shortRange } from '../i18n.jsx'
 import { dateLabel, NOTICE_HOURS, startsAt, weekdayOf, firstOn } from '../../shared/lessons.js'
 import WeekCalendar, { weekDates } from '../components/WeekCalendar.jsx'
 import { S } from './strings.js'
+import { Icon } from '../components/Icon.jsx'
 
 const KEY = 'kangyan-student-token'
+const TAB_KEY = 'kangyan-student-tab'
+const TABS = ['home', 'calendar', 'history', 'requests', 'profile']
 const getTok = () => { try { return localStorage.getItem(KEY) || '' } catch { return '' } }
 const setTok = (t) => { try { t ? localStorage.setItem(KEY, t) : localStorage.removeItem(KEY) } catch { /* ignore */ } }
 
@@ -321,7 +324,7 @@ function CalendarLink({ T, token, notify }) {
   const copy = async () => { try { await navigator.clipboard.writeText(https); notify(T.calLink.copied) } catch { notify(https) } }
   return (
     <div className="stu-callink">
-      <button type="button" className="act" onClick={() => setOpen((o) => !o)} aria-expanded={open}>📅 {T.calLink.btn}</button>
+      <button type="button" className="act" onClick={() => setOpen((o) => !o)} aria-expanded={open}><Icon name="calendarPlus" />{T.calLink.btn}</button>
       {open && (
         <div className="stu-callink__box">
           <p>{T.calLink.p}</p>
@@ -385,6 +388,171 @@ function History({ st, T, L, lang }) {
   )
 }
 
+const localPhone = (p) => (p?.startsWith('60') ? `0${p.slice(2)}` : p || '')
+
+/** Their own details: school, birthday, contact and parent. Name, level and login number stay with the tutor. */
+function ProfileForm({ st, T, L, token, notify, onSaved }) {
+  const P = T.profile
+  const p = st.profile || {}
+  const init = () => ({
+    school: p.school || '', birthday: p.birthday || '', email: p.email || '', address: p.address || '',
+    parentName: p.parent_name || '', parentRelation: p.parent_relation || '', parentPhone: localPhone(p.parent_phone), lang: p.lang || 'en',
+  })
+  const [f, setF] = useState(init)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }))
+  const dirty = JSON.stringify(f) !== JSON.stringify(init())
+  const submit = async (e) => {
+    e.preventDefault()
+    setBusy(true)
+    setErr('')
+    try {
+      await call(token, { action: 'profile', ...f })
+      notify(P.saved)
+      onSaved()
+    } catch (e2) {
+      setErr(T.errors[e2.code] || T.errors.server)
+    } finally {
+      setBusy(false)
+    }
+  }
+  const field = (k, label, props = {}, hint) => (
+    <label className="stu-field">
+      <span>{label}</span>
+      <input value={f[k]} onChange={set(k)} {...props} />
+      {hint && <small className="stu-small">{hint}</small>}
+    </label>
+  )
+  return (
+    <form className="stu-card stu-prof" onSubmit={submit}>
+      <p className="stu-muted">{P.p}</p>
+      <fieldset className="stu-prof__sec">
+        <legend>{P.student}</legend>
+        <dl className="stu-prof__fixed">
+          <dt>{P.name}</dt><dd>{p.name}</dd>
+          {st.student.level && <><dt>{P.level}</dt><dd>{L.levels[st.student.level] || st.student.level}</dd></>}
+          <dt>{P.login}</dt><dd>{localPhone(p.phone)}</dd>
+        </dl>
+        <p className="stu-small">{P.fixed}</p>
+        <div className="stu-prof__row">
+          {field('school', P.school, { maxLength: 120 })}
+          {field('birthday', P.birthday, { type: 'date', max: st.today })}
+        </div>
+        {field('email', P.email, { type: 'email', maxLength: 120 })}
+        {field('address', P.address, { maxLength: 300 }, P.addressHint)}
+      </fieldset>
+      <fieldset className="stu-prof__sec">
+        <legend>{P.parent}</legend>
+        <div className="stu-prof__row">
+          {field('parentName', P.parentName, { maxLength: 80 })}
+          <label className="stu-field">
+            <span>{P.relation}</span>
+            <select value={f.parentRelation} onChange={set('parentRelation')}>
+              <option value="">—</option>
+              {Object.entries(P.relations).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+          </label>
+        </div>
+        {field('parentPhone', P.parentPhone, { type: 'tel', placeholder: T.login.phonePh }, P.parentHint)}
+      </fieldset>
+      <label className="stu-field">
+        <span>{P.lang}</span>
+        <select value={f.lang} onChange={set('lang')}><option value="en">English</option><option value="zh">中文</option></select>
+      </label>
+      {err && <p className="stu-err" role="alert">{err}</p>}
+      <button className="btn btn--accent stu-prof__save" disabled={busy || !dirty}>{busy ? P.saving : P.save}</button>
+    </form>
+  )
+}
+
+/** The next lesson that will actually happen: weekly ones without an approved change, or one moved in. */
+function nextLesson(st) {
+  const now = Date.now()
+  const weekly = st.lessons
+    .filter((l) => !(l.request && l.request.status === 'approved'))
+    .map((l) => ({ date: l.date, start: l.start, end: l.end, lesson: l }))
+  const movedIn = st.requests
+    .filter((r) => r.status === 'approved' && r.kind === 'reschedule' && r.to_date && r.to_start)
+    .map((r) => ({ date: r.to_date, start: r.to_start, end: r.to_end, moved: true }))
+  return [...weekly, ...movedIn]
+    .filter((x) => startsAt(x.date, x.end) > now)
+    .sort((a, b) => startsAt(a.date, a.start) - startsAt(b.date, b.start))[0] || null
+}
+const daysBetween = (a, b) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 864e5)
+
+function Home({ st, T, L, lang, token, notify, go, onSheet }) {
+  const H = T.home
+  const next = nextLesson(st)
+  const fee = st.fees?.[0]
+  const owing = st.fees?.filter((f) => f.state === 'due' || f.state === 'overdue') || []
+  const waiting = st.requests.filter((r) => r.status === 'pending').length
+  const p = st.progress
+  const canMove = next?.lesson && !next.lesson.request && next.lesson.hours >= NOTICE_HOURS
+  return (
+    <>
+      <div className="stu-tiles">
+        <section className="stu-tile stu-tile--next">
+          <span className="stu-k">{H.next}</span>
+          {next ? (
+            <>
+              <b>{dateLabel(next.date, lang)}</b>
+              <span>{shortRange(next.start, next.end, lang)} · {H.inDays(daysBetween(st.today, next.date))}</span>
+              {next.lesson && !next.lesson.request && (
+                <div className="stu-tile__acts">
+                  <button type="button" className="act" onClick={() => onSheet({ kind: 'absence', lesson: next.lesson })}>{T.cantMake}</button>
+                  {canMove && st.student.lessonType !== 'group' && <button type="button" className="act" onClick={() => onSheet({ kind: 'reschedule', lesson: next.lesson })}>{T.reschedule}</button>}
+                </div>
+              )}
+            </>
+          ) : <span className="stu-muted">{H.noNext}</span>}
+        </section>
+        <button type="button" className="stu-tile" onClick={() => go('history')}>
+          <span className="stu-k">{H.month}</span>
+          <b>{p.total ? H.monthOf(p.done, p.total) : '—'}</b>
+          {p.total > 0 && <div className="stu-hist__bar" aria-hidden="true"><i style={{ width: `${(p.done / p.total) * 100}%` }} /></div>}
+        </button>
+        <button type="button" className={`stu-tile ${owing.some((f) => f.state === 'overdue') ? 'is-alert' : ''}`} onClick={() => go('history')}>
+          <span className="stu-k">{H.fee}</span>
+          {fee ? (
+            <>
+              <b>{fee.amount == null ? '—' : `RM${owing.length ? owing.reduce((n, f) => n + (f.amount || 0), 0) : fee.amount}`}</b>
+              <span className={`stu-chip stu-chip--fee-${owing.length ? (owing.some((f) => f.state === 'overdue') ? 'overdue' : 'due') : fee.state}`}>
+                {T.fees.state[owing.length ? (owing.some((f) => f.state === 'overdue') ? 'overdue' : 'due') : fee.state]}
+              </span>
+            </>
+          ) : <b>{H.noFee}</b>}
+        </button>
+        <button type="button" className="stu-tile" onClick={() => go('requests')}>
+          <span className="stu-k">{H.pending}</span>
+          <b>{waiting}</b>
+          <span>{H.pendingN(waiting)}</span>
+        </button>
+      </div>
+
+      <div className="stu-cols">
+        <section className="stu-card stu-regular">
+          <span className="stu-k">{T.regular}</span>
+          {st.weekly.length ? (
+            <>
+              {st.weekly.map((w) => <b key={`${w.weekday}-${w.start}`}>{T.every(L.weekdays[w.weekday])} · {shortRange(w.start, w.end, lang)}</b>)}
+              <span className="stu-muted">
+                {[T.types[st.student.lessonType], st.student.level && (L.levels[st.student.level] || st.student.level), st.student.subjects.map((x) => L.subjects[x] || x).join(lang === 'zh' ? '、' : ', ')].filter(Boolean).join(' · ')}
+              </span>
+            </>
+          ) : <span className="stu-muted">{T.noSlot}</span>}
+        </section>
+        <section className="stu-card stu-quick">
+          <span className="stu-k">{H.quick}</span>
+          <button type="button" className="act" onClick={() => go('calendar')}><Icon name="calendar" />{H.seeCal}</button>
+          {st.weekly.length > 0 && <button type="button" className="act" onClick={() => onSheet({ kind: 'change' })}><Icon name="repeat" />{T.changeBtn}</button>}
+          <CalendarLink T={T} token={st.calendarToken} notify={notify} />
+        </section>
+      </div>
+    </>
+  )
+}
+
 function PinForm({ T, token, onToken, notify, open, setOpen }) {
   const [cur, setCur] = useState('')
   const [next, setNext] = useState('')
@@ -436,11 +604,7 @@ export default function StudentPage() {
   const [sheet, setSheet] = useState(null) // { kind, lesson?, preset? }
   const [week, setWeek] = useState(0)
   const [pinOpen, setPinOpen] = useState(false)
-  // The top-bar PIN button opens the form at the bottom and scrolls to it.
-  const openPin = () => {
-    setPinOpen(true)
-    setTimeout(() => document.getElementById('change-pin')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50)
-  }
+  const [tab, setTab] = useState(() => { try { const t = sessionStorage.getItem(TAB_KEY); return TABS.includes(t) ? t : 'home' } catch { return 'home' } })
   const [sel, setSel] = useState(null) // key of the tapped calendar entry
   const [toast, setToast] = useState(null)
 
@@ -494,12 +658,22 @@ export default function StudentPage() {
     return `${r.to_date ? dateLabel(r.to_date, lang) : L.weekdays[r.to_weekday ?? 0]} ${shortRange(t.start, t.end, lang)}`
   }
 
+  const go = (t) => { setTab(t); try { sessionStorage.setItem(TAB_KEY, t) } catch { /* ignore */ } window.scrollTo({ top: 0 }) }
+  const waiting = st ? st.requests.filter((r) => r.status === 'pending').length : 0
+  const owing = st ? (st.fees || []).some((f) => f.state === 'due' || f.state === 'overdue') : false
+  const NAV = [
+    { key: 'home', icon: 'home' },
+    { key: 'calendar', icon: 'calendar' },
+    { key: 'history', icon: 'chart', dot: owing },
+    { key: 'requests', icon: 'inbox', n: waiting },
+    { key: 'profile', icon: 'user' },
+  ]
+
   const header = (
     <header className="stu-top">
       <a href="/" className="admin__logo">Kangyan<span className="dot" aria-hidden="true" /><small>{T.title}</small></a>
       <div className="stu-top__acts">
         <button type="button" className="stu-lang" onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}>{lang === 'zh' ? 'EN' : '中文'}</button>
-        {token && st && <button type="button" className="stu-lang" onClick={openPin} aria-label={T.pinH}><span className="stu-full">{T.pinBtn}</span><span className="stu-short">PIN</span></button>}
         {token && <button type="button" className="stu-lang" onClick={logout}>{T.logout}</button>}
       </div>
     </header>
@@ -507,99 +681,117 @@ export default function StudentPage() {
 
   if (!token) return <div className="stu">{header}<main className="stu-main"><Login T={T} onToken={saveToken} /></main></div>
 
-  return (
-    <div className="stu">
-      {header}
-      <main className="stu-main">
-        {loadErr ? (
-          <div className="stu-card"><p className="stu-err">{loadErr}</p><button type="button" className="btn btn--accent" onClick={load}>↻</button></div>
-        ) : !st ? (
-          <div className="adm-skel" aria-busy="true"><span /><span /></div>
-        ) : (
+  const calendar = st && (
+    <section className="stu-card stu-cal">
+      <div className="stu-cal__head">
+        <ul className="stu-legend">
+          {['mine', 'pending', 'busy'].map((k) => <li key={k}><i className={`wc__dot wc__dot--${k}`} />{T.cal.legend[k]}</li>)}
+        </ul>
+      </div>
+      {(() => {
+        const days = studentWeek(st, week, T, L, lang)
+        const picked = sel?.startsWith('ask:')
+          ? { key: sel, tone: 'free', info: { type: 'ask', date: sel.split(':')[1], start: sel.split(':').slice(2).join(':') || st.weekly[0]?.start || '17:30' } }
+          : days.flatMap((d) => d.events).find((e) => e.key === sel)
+        return (
           <>
-            <section className="stu-hero">
-              <h1>{T.hi(st.student.name)}</h1>
-              <div className="stu-card stu-regular">
-                <span className="stu-k">{T.regular}</span>
-                {st.weekly.length ? (
-                  <>
-                    {st.weekly.map((w) => <b key={`${w.weekday}-${w.start}`}>{T.every(L.weekdays[w.weekday])} · {shortRange(w.start, w.end, lang)}</b>)}
-                    <span className="stu-muted">
-                      {[T.types[st.student.lessonType], st.student.level && (L.levels[st.student.level] || st.student.level), st.student.subjects.map((x) => L.subjects[x] || x).join(lang === 'zh' ? '、' : ', ')].filter(Boolean).join(' · ')}
-                    </span>
-                  </>
-                ) : <span className="stu-muted">{T.noSlot}</span>}
-              </div>
-            </section>
-
-            {st.announcements?.map((a) => (
-              <section key={a.id} className="stu-news" role="note">
-                <b>📢 {a.title}</b>
-                {a.body && <p>{a.body}</p>}
-              </section>
-            ))}
-
-            <Fees st={st} T={T} lang={lang} />
-
-            <section className="stu-card stu-cal">
-              <div className="stu-cal__head">
-                <h2>{T.cal.title}</h2>
-                <ul className="stu-legend">
-                  {['mine', 'pending', 'busy'].map((k) => <li key={k}><i className={`wc__dot wc__dot--${k}`} />{T.cal.legend[k]}</li>)}
-                </ul>
-              </div>
-              <CalendarLink T={T} token={st.calendarToken} notify={notify} />
-              {(() => {
-                const days = studentWeek(st, week, T, L, lang)
-                const picked = sel?.startsWith('ask:')
-                  ? { key: sel, tone: 'free', info: { type: 'ask', date: sel.split(':')[1], start: sel.split(':').slice(2).join(':') || st.weekly[0]?.start || '17:30' } }
-                  : days.flatMap((d) => d.events).find((e) => e.key === sel)
-                return (
-                  <>
-                    <WeekCalendar
-                      days={days} week={week} weeks={st.weeksAhead} onWeek={(n) => { setWeek(n); setSel(null) }}
-                      selected={sel} onSelect={(e) => setSel(e.key === sel ? null : e.key)} today={st.today}
-                      onEmpty={(d, t) => setSel(`ask:${d.date}:${t || ''}`)}
-                      title={`${days[0].sub} – ${days[6].sub}`}
-                      labels={{ prev: T.cal.prev, next: T.cal.next, today: T.cal.thisWeek, empty: T.cal.empty, ask: T.cal.askDay, hour: (h) => (lang === 'zh' ? `${h}点` : `${h % 12 || 12}${h < 12 ? 'am' : 'pm'}`) }}
-                    />
-                    {picked ? <CalDetail ev={picked} st={st} T={T} L={L} lang={lang} onSheet={setSheet} onCancel={cancel} /> : <p className="stu-muted stu-cal__hint">{st.weekly.length ? T.cal.hint : T.noSlot}</p>}
-                  </>
-                )
-              })()}
-            </section>
-
-            <History st={st} T={T} L={L} lang={lang} />
-
-            <section className="stu-card">
-              <h2>{T.requests}</h2>
-              {st.requests.length ? (
-                <ul className="stu-reqs">
-                  {st.requests.map((r) => (
-                    <li key={r.id} className={`stu-req is-${r.status}`}>
-                      <div className="stu-req__top">
-                        <b>{T.kinds[r.kind]}</b>
-                        <span className={`stu-chip stu-chip--${r.status}`}>{T.reqStatus[r.status]}</span>
-                      </div>
-                      <p>
-                        {r.lesson_date && T.lessonOn(`${dateLabel(r.lesson_date, lang)}${r.from_lesson ? ` ${shortRange(r.from_lesson.start, r.from_lesson.end, lang)}` : ''}`)}
-                        {!r.lesson_date && r.from_lesson && `${L.weekdays[r.from_lesson.weekday]} ${shortRange(r.from_lesson.start, r.from_lesson.end, lang)}`}
-                        {(r.to_start || r.to_label) && <> {T.to(timeOf(r))}</>}
-                        {r.recording && <> · {T.recordingAsked}</>}
-                      </p>
-                      {r.note && <p className="stu-muted">“{r.note}”</p>}
-                      {r.reply && <p className="stu-reply"><span>{T.reply}</span>{r.reply}</p>}
-                      {r.status === 'pending' && <button type="button" className="stu-link" onClick={() => cancel(r.id)}>{T.withdraw}</button>}
-                    </li>
-                  ))}
-                </ul>
-              ) : <p className="stu-muted">{T.noRequests}</p>}
-            </section>
-
-            <PinForm T={T} token={token} onToken={saveToken} notify={notify} open={pinOpen} setOpen={setPinOpen} />
+            <WeekCalendar
+              days={days} week={week} weeks={st.weeksAhead} onWeek={(n) => { setWeek(n); setSel(null) }}
+              selected={sel} onSelect={(e) => setSel(e.key === sel ? null : e.key)} today={st.today}
+              onEmpty={(d, t) => setSel(`ask:${d.date}:${t || ''}`)}
+              title={`${days[0].sub} – ${days[6].sub}`}
+              labels={{ prev: T.cal.prev, next: T.cal.next, today: T.cal.thisWeek, empty: T.cal.empty, ask: T.cal.askDay, hour: (h) => (lang === 'zh' ? `${h}点` : `${h % 12 || 12}${h < 12 ? 'am' : 'pm'}`) }}
+            />
+            {picked ? <CalDetail ev={picked} st={st} T={T} L={L} lang={lang} onSheet={setSheet} onCancel={cancel} /> : <p className="stu-muted stu-cal__hint">{st.weekly.length ? T.cal.hint : T.noSlot}</p>}
           </>
+        )
+      })()}
+      <CalendarLink T={T} token={st.calendarToken} notify={notify} />
+    </section>
+  )
+
+  const requestList = st && (
+    <section className="stu-card">
+      {st.requests.length ? (
+        <ul className="stu-reqs">
+          {st.requests.map((r) => (
+            <li key={r.id} className={`stu-req is-${r.status}`}>
+              <div className="stu-req__top">
+                <b>{T.kinds[r.kind]}</b>
+                <span className={`stu-chip stu-chip--${r.status}`}>{T.reqStatus[r.status]}</span>
+              </div>
+              <p>
+                {r.lesson_date && T.lessonOn(`${dateLabel(r.lesson_date, lang)}${r.from_lesson ? ` ${shortRange(r.from_lesson.start, r.from_lesson.end, lang)}` : ''}`)}
+                {!r.lesson_date && r.from_lesson && `${L.weekdays[r.from_lesson.weekday]} ${shortRange(r.from_lesson.start, r.from_lesson.end, lang)}`}
+                {(r.to_start || r.to_label) && <> {T.to(timeOf(r))}</>}
+                {r.recording && <> · {T.recordingAsked}</>}
+              </p>
+              {r.note && <p className="stu-muted">“{r.note}”</p>}
+              {r.reply && <p className="stu-reply"><span>{T.reply}</span>{r.reply}</p>}
+              {r.status === 'pending' && <button type="button" className="stu-link" onClick={() => cancel(r.id)}>{T.withdraw}</button>}
+            </li>
+          ))}
+        </ul>
+      ) : <p className="stu-muted">{T.noRequests}</p>}
+    </section>
+  )
+
+  return (
+    <div className="stu stu--dash">
+      {header}
+      <div className="stu-dash">
+        {st && (
+          <nav className="stu-nav" aria-label={T.title}>
+            {NAV.map((n) => (
+              <button key={n.key} type="button" className={`stu-nav__b ${tab === n.key ? 'is-on' : ''}`} aria-current={tab === n.key ? 'page' : undefined} onClick={() => go(n.key)}>
+                <Icon name={n.icon} className="stu-nav__i" />
+                <span className="stu-nav__t">{T.nav[n.key]}</span>
+                {n.n > 0 && <span className="badge">{n.n}</span>}
+                {n.dot && <span className="stu-nav__dot" aria-hidden="true" />}
+              </button>
+            ))}
+          </nav>
         )}
-      </main>
+        <main className="stu-main">
+          {loadErr ? (
+            <div className="stu-card"><p className="stu-err">{loadErr}</p><button type="button" className="btn btn--accent" onClick={load}>↻</button></div>
+          ) : !st ? (
+            <div className="adm-skel" aria-busy="true"><span /><span /></div>
+          ) : (
+            <>
+              <div className="stu-head">
+                <h1>{tab === 'home' ? T.hi(st.student.name) : T.nav[tab]}</h1>
+                {tab === 'home' && (
+                  <p className="stu-muted">{[T.types[st.student.lessonType], st.student.level && (L.levels[st.student.level] || st.student.level)].filter(Boolean).join(' · ')}</p>
+                )}
+              </div>
+
+              {tab === 'home' && st.announcements?.map((a) => (
+                <section key={a.id} className="stu-news" role="note">
+                  <b><Icon name="megaphone" />{a.title}</b>
+                  {a.body && <p>{a.body}</p>}
+                </section>
+              ))}
+
+              {tab === 'home' && <Home st={st} T={T} L={L} lang={lang} token={token} notify={notify} go={go} onSheet={setSheet} />}
+              {tab === 'calendar' && calendar}
+              {tab === 'history' && (
+                <div className="stu-cols">
+                  <Fees st={st} T={T} lang={lang} />
+                  <History st={st} T={T} L={L} lang={lang} />
+                </div>
+              )}
+              {tab === 'requests' && requestList}
+              {tab === 'profile' && (
+                <>
+                  <ProfileForm key={JSON.stringify(st.profile)} st={st} T={T} L={L} token={token} notify={notify} onSaved={load} />
+                  <PinForm T={T} token={token} onToken={saveToken} notify={notify} open={pinOpen} setOpen={setPinOpen} />
+                </>
+              )}
+            </>
+          )}
+        </main>
+      </div>
 
       {sheet && st && (
         <RequestSheet

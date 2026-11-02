@@ -275,11 +275,12 @@ export default function AdminPage() {
       // Start from the times they picked; the form lets you change or add more.
       lessons: r.preferred_slots.filter((p) => p.live).map((p) => ({ weekday: p.weekday, start: p.start, end: p.end })).slice(0, 3),
       lang: r.lang === 'zh' ? 'zh' : 'en', enquiryId: r.id,
+      school: r.school || '', email: r.email || '',
+      // A parent's enquiry: their number is also where fee reminders go.
+      ...(r.enquirer === 'parent' ? { parentPhone: r.phone || '' } : {}),
       notes: [
-        r.school,
         r.format === 'in-person' ? `In person${r.location ? `: ${r.location}` : ''}` : r.location,
         r.custom_labels?.length ? `Asked for: ${r.custom_labels.join(', ')}` : '',
-        r.email ? `Email: ${r.email}` : '',
         r.message ? `Message: ${r.message}` : '',
       ].filter(Boolean).join('\n'),
     })
