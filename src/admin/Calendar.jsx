@@ -3,7 +3,7 @@
 // (open / taken) live on their own tab. Tap an entry for details and quick actions.
 import { useMemo, useState } from 'react'
 import { WEEKDAYS, SLOT_KIND_LABEL, formatTime } from '../../shared/constants.js'
-import { dateLabel, todayMY, weekdayOf, covers } from '../../shared/lessons.js'
+import { dateLabel, todayMY, weekdayOf, covers, kindOf } from '../../shared/lessons.js'
 import { shortRange } from '../i18n.jsx'
 import WeekCalendar, { weekDates } from '../components/WeekCalendar.jsx'
 import { Icon, KIND_SHORT, api, waLink } from './lib.jsx'
@@ -21,7 +21,7 @@ function peopleFor(date, match, students, requests) {
     for (const l of (s.lessons || []).filter((x) => match(x) && covers(x, date))) {
       const r = requests.find((x) => x.student_id === s.id && x.lesson_date === date && x.kind !== 'change' && ACTIVE.includes(x.status) && (!x.from_lesson || x.from_lesson.start === l.start))
       const state = !r ? 'regular' : r.kind === 'absence' ? (r.status === 'approved' ? 'absent' : 'absentAsk') : (r.status === 'approved' ? 'movedOut' : 'moveOutAsk')
-      out.push({ s, l, r, state })
+      out.push({ s, l, r, state, kind: kindOf(l, s) })
     }
   }
   return out
@@ -33,7 +33,11 @@ function movedIn(date, students, requests) {
     .filter((x) => x.kind === 'reschedule' && ACTIVE.includes(x.status) && x.to_date === date && x.to_start)
     .map((r) => ({ s: students.find((x) => x.id === r.student_id), r, state: r.status === 'approved' ? 'movedIn' : 'moveInAsk' }))
     .filter((p) => p.s)
+    .map((p) => ({ ...p, kind: kindOf(movedFromLesson(p), p.s) }))
 }
+
+/** The weekly lesson a moved lesson came from (its type goes with it). */
+const movedFromLesson = ({ s, r }) => (r.from_lesson?.kind ? r.from_lesson : r.from_lesson && (s.lessons || []).find((l) => l.start === r.from_lesson.start && covers(l, r.lesson_date)))
 
 const HERE = ['regular', 'movedIn', 'absentAsk', 'moveOutAsk', 'moveInAsk']
 
@@ -45,7 +49,7 @@ function weekDays(week, slots, students, requests) {
     const make = (key, start, end, people, slot) => {
       const here = people.filter((p) => HERE.includes(p.state))
       const pend = people.filter((p) => p.r?.status === 'pending').length
-      const tone = here.length ? (here.some((p) => p.s.lesson_type === 'private') ? 'lesson' : 'group')
+      const tone = here.length ? (here.some((p) => p.kind === 'private') ? 'lesson' : 'group')
         : people.length ? 'off' : slot?.status === 'taken' ? 'taken' : 'open'
       const title = here.length ? here.map((p) => p.s.name.split(/\s+/)[0]).join(', ') : people.length ? 'Absent / moved' : slot?.status === 'taken' ? 'Taken' : 'Open'
       // Drag to move works on a lesson with exactly one student in it (not a shared group slot).
@@ -131,7 +135,7 @@ function Detail({ ev, slots, onDecide, onEdit, onMove, onMoveSeries, onCancelLes
             <li key={`${p.s.id}-${p.state}-${p.r?.id || ''}`} className={`acal-p acal-p--${p.state}`}>
               <div className="acal-p__who">
                 <b>{p.s.name}</b>
-                <span>{[p.s.level, KIND_SHORT[p.s.lesson_type]].filter(Boolean).join(' · ')}</span>
+                <span>{[p.s.level, KIND_SHORT[p.kind]].filter(Boolean).join(' · ')}</span>
               </div>
               <span className="acal-p__state">{STATE[p.state](p, target)}</span>
               {p.r?.note && <span className="acal-p__note">“{p.r.note}”</span>}

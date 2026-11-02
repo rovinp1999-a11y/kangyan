@@ -13,7 +13,7 @@ import { normalPhone, isPin, checkPin, hashPin, encryptPin, issueStudentToken, r
 import { notify } from './_notify.js'
 import { randomBytes } from 'node:crypto'
 import { occurrences, monthRange, monthOf, suggestedFee, monthProgress, feeState } from '../shared/schedule.js'
-import { NOTICE_HOURS, WEEKS_AHEAD, upcomingDates, hoursUntil, todayMY, isDate, weekdayOf, startsAt, dateLabel, addDays, covers } from '../shared/lessons.js'
+import { NOTICE_HOURS, WEEKS_AHEAD, upcomingDates, hoursUntil, todayMY, isDate, weekdayOf, startsAt, dateLabel, addDays, covers, kindOf } from '../shared/lessons.js'
 
 const MAX_FAILS = 8
 const WINDOW_MIN = 15
@@ -97,14 +97,13 @@ async function feed(res, sql, token) {
   const stamp = (date, hhmm) => new Date(startsAt(date, hhmm)).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')
   const esc = (t) => String(t).replace(/[\\;,]/g, (c) => `\\${c}`).replace(/\n/g, '\\n')
   const subj = (s.subjects || []).join(', ') || 'Tuition'
-  const kind = s.lesson_type === 'group' ? 'Group class' : '1-to-1'
   const now = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')
   const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Kangyan//Lessons//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
     `X-WR-CALNAME:${esc(`Kangyan lessons · ${s.name}`)}`, 'X-WR-TIMEZONE:Asia/Kuala_Lumpur', 'REFRESH-INTERVAL;VALUE=DURATION:PT6H', 'X-PUBLISHED-TTL:PT6H']
   for (const o of list) {
     lines.push('BEGIN:VEVENT', `UID:${s.id}-${o.date}-${o.start.replace(':', '')}@kangyan.work`, `DTSTAMP:${now}`,
       `DTSTART:${stamp(o.date, o.start)}`, `DTEND:${stamp(o.date, o.end)}`,
-      `SUMMARY:${esc(`${subj} · ${kind}${o.status === 'absent' ? ' (absent)' : ''}`)}`,
+      `SUMMARY:${esc(`${subj} · ${o.kind === 'group' ? 'Group class' : '1-to-1'}${o.status === 'absent' ? ' (absent)' : ''}`)}`,
       `DESCRIPTION:${esc('Kangyan tuition. Changes: https://kangyan.work/student')}`,
       'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${esc(`${subj} lesson in 1 hour`)}`, 'TRIGGER:-PT1H', 'END:VALARM', 'END:VEVENT')
   }
@@ -124,7 +123,7 @@ async function state(sql, s) {
 
   // Every upcoming lesson from every weekly time, soonest first.
   const lessons = weekly
-    .flatMap((w) => upcomingDates(w, { from: startDay || undefined }).map((date) => ({ date, weekday: w.weekday, start: w.start, end: w.end })))
+    .flatMap((w) => upcomingDates(w, { from: startDay || undefined }).map((date) => ({ date, weekday: w.weekday, start: w.start, end: w.end, kind: kindOf(w, s) })))
     .sort((a, b) => startsAt(a.date, a.start) - startsAt(b.date, b.start))
     .map((l) => {
       const r = requests.find((x) => x.lesson_date === l.date && x.kind !== 'change' && ACTIVE.includes(x.status) && (!x.from_lesson || x.from_lesson.start === l.start))
@@ -143,7 +142,7 @@ async function state(sql, s) {
   const history = occurrences(stu, requests, historyFrom, today)
     .filter((o) => startsAt(o.date, o.start) <= Date.now())
     .reverse()
-    .map(({ date, start, end, status, movedFrom }) => ({ date, start, end, status, movedFrom: movedFrom || null }))
+    .map(({ date, start, end, kind, status, movedFrom }) => ({ date, start, end, kind, status, movedFrom: movedFrom || null }))
 
   // Fees: this month and the two before (only months since they joined).
   const joined = monthOf(joinedDay)
@@ -158,14 +157,14 @@ async function state(sql, s) {
   const news = await sql`
     SELECT id, created_at, title, body FROM announcements
     WHERE (until IS NULL OR until >= ${today}::date)
-      AND (audience = 'all' OR audience = ${s.lesson_type} OR (audience = 'student' AND student_id = ${s.id}))
+      AND (audience = 'all' OR audience = ${s.lesson_type} OR (${s.lesson_type} = 'both' AND audience IN ('private','group')) OR (audience = 'student' AND student_id = ${s.id}))
     ORDER BY created_at DESC LIMIT 5`
 
   return {
     student: { name: s.name, level: s.level, lessonType: s.lesson_type, subjects: s.subjects, lang: s.lang },
     profile: await profileOf(sql, s.id),
     history, progress: monthProgress(stu, requests), fees, announcements: news, calendarToken: await calendarToken(sql, s),
-    weekly: weekly.map((w) => ({ weekday: w.weekday, start: w.start, end: w.end, from: w.from || null, until: w.until || null })),
+    weekly: weekly.map((w) => ({ weekday: w.weekday, start: w.start, end: w.end, kind: kindOf(w, s), from: w.from || null, until: w.until || null })),
     lessons, requests, noticeHours: NOTICE_HOURS, weeksAhead: WEEKS_AHEAD, today, lastDay: dates[dates.length - 1], startDay: startDay || null,
     // Other confirmed students' lessons, shown only as "occupied" (never who).
     busy: await occupied(sql, s.id, dates),
@@ -212,13 +211,13 @@ async function createRequest(res, sql, s, b) {
   let to = null // { date?, weekday?, start, end }
 
   if (kind === 'reschedule' || kind === 'absence') {
-    if (kind === 'reschedule' && s.lesson_type !== 'private') return fail(res, 400, 'Group classes are not moved', 'group')
     const lesson = st.lessons.find((l) => l.date === b.lessonDate && (!b.lessonStart || l.start === b.lessonStart))
     if (!lesson) return fail(res, 400, 'That lesson is not coming up', 'invalid')
+    if (kind === 'reschedule' && lesson.kind !== 'private') return fail(res, 400, 'Group classes are not moved', 'group')
     if (lesson.request) return fail(res, 409, 'There is already a request for that lesson', 'duplicate')
     if (kind === 'reschedule' && lesson.hours < NOTICE_HOURS) return fail(res, 400, 'Less than 12 hours before the lesson', 'notice')
     lessonDate = lesson.date
-    fromLesson = { weekday: lesson.weekday, start: lesson.start, end: lesson.end }
+    fromLesson = { weekday: lesson.weekday, start: lesson.start, end: lesson.end, kind: lesson.kind }
   }
   if (kind === 'reschedule') {
     // Any date and time can be asked for; the tutor accepts, declines or adjusts it.
@@ -233,7 +232,7 @@ async function createRequest(res, sql, s, b) {
       const lesson = st.lessons.find((l) => l.date === b.lessonDate && (!b.lessonStart || l.start === b.lessonStart))
       if (!lesson) return fail(res, 400, 'That lesson is not coming up', 'invalid')
       lessonDate = lesson.date
-      fromLesson = { weekday: lesson.weekday, start: lesson.start, end: lesson.end }
+      fromLesson = { weekday: lesson.weekday, start: lesson.start, end: lesson.end, kind: lesson.kind }
     } else {
       fromLesson = st.weekly.find((w) => w.weekday === Number(b.fromWeekday) && w.start === b.fromStart) || (st.weekly.length === 1 ? st.weekly[0] : null)
       if (st.weekly.length && !fromLesson) return fail(res, 400, 'Pick which lesson to change', 'invalid')
@@ -269,7 +268,7 @@ async function createRequest(res, sql, s, b) {
     change: `From ${lessonDate ? dateLabel(lessonDate) : 'now'} on, change the weekly lesson${fromLesson ? ` (${DAY_NAMES[fromLesson.weekday]} ${span(fromLesson.start, fromLesson.end)})` : ''} to ${toLabel}`,
   }[kind]
   await notify(`Kangyan: ${s.name} — ${kind === 'absence' ? 'absence' : kind === 'change' ? 'new regular time' : 'reschedule'} request`,
-    `${s.name} (${s.level || ''}, ${s.lesson_type === 'group' ? 'group' : '1-to-1'})\n${what}${note ? `\nNote: ${note}` : ''}\n\nAccept, decline or change the time: https://kangyan.work/admin`)
+    `${s.name} (${s.level || ''}, ${fromLesson?.kind === 'group' || (!fromLesson && s.lesson_type === 'group') ? 'group' : '1-to-1'})\n${what}${note ? `\nNote: ${note}` : ''}\n\nAccept, decline or change the time: https://kangyan.work/admin`)
   return send(res, 201, { ok: true, id: row.id })
 }
 

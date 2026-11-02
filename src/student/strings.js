@@ -18,7 +18,7 @@ export const S = {
     regular: 'Regular lessons',
     every: (day) => `Every ${day}`,
     noSlot: "Your regular lessons haven't been set yet. Your tutor will add them.",
-    types: { private: '1-to-1', group: 'Group class' },
+    types: { private: '1-to-1', group: 'Group class', both: '1-to-1 + group class' },
     upcoming: 'Upcoming lessons',
     calLink: {
       btn: 'Add to my phone calendar',
@@ -209,7 +209,7 @@ export const S = {
     regular: '固定上课时间',
     every: (day) => `每${day}`,
     noSlot: '老师还没设定你的固定上课时间。',
-    types: { private: '一对一', group: '小组课' },
+    types: { private: '一对一', group: '小组课', both: '一对一 + 小组课' },
     upcoming: '接下来的课',
     calLink: {
       btn: '加到手机日历',

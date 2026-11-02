@@ -4,7 +4,7 @@
 import { useMemo, useState } from 'react'
 import { addDays, todayMY } from '../../shared/lessons.js'
 import { suggestedFee, feeState, monthOf } from '../../shared/schedule.js'
-import { Icon, KIND_SHORT, api, waLink } from './lib.jsx'
+import { Icon, KIND_SHORT, STUDENT_KIND, api, waLink } from './lib.jsx'
 import { fill } from './templates.js'
 
 const SITE = 'https://kangyan.work/student'
@@ -79,7 +79,7 @@ export function FeesTab({ students, requests, fees, setFees, notify, onAuthError
           <span className="is-due"><b>RM{(total - paid).toLocaleString()}</b> outstanding · {unpaid.length} student{unpaid.length === 1 ? '' : 's'}</span>
         </div>
       </div>
-      <p className="adm-showing">Fees are due on the 1st and show as overdue after the 14th. Amounts are suggested (group: by level; 1-to-1: hourly rate × that month's hours, absences included, lessons you cancelled not) — type a number to override, or clear it to go back to the suggestion.</p>
+      <p className="adm-showing">Fees are due on the 1st and show as overdue after the 14th. Amounts are suggested (group: by level; 1-to-1: hourly rate × that month's hours, absences included, lessons you cancelled not; a 1-to-1 student who also joins a group class pays the hourly rate for those hours too) — type a number to override, or clear it to go back to the suggestion.</p>
 
       {rows.length === 0 ? <div className="adm-empty"><strong>No students</strong>Add students first.</div> : (
         <div className="fees__list">
@@ -87,7 +87,7 @@ export function FeesTab({ students, requests, fees, setFees, notify, onAuthError
             <article key={r.s.id} className={`fee fee--${r.state}`}>
               <div className="fee__who">
                 <b>{r.s.name}</b>
-                <span>{[r.s.level, KIND_SHORT[r.s.lesson_type], r.s.lesson_type === 'private' ? `RM${r.s.hourly_rate || 70}/h` : null].filter(Boolean).join(' · ')}</span>
+                <span>{[r.s.level, STUDENT_KIND[r.s.lesson_type], r.s.lesson_type !== 'group' ? `RM${r.s.hourly_rate || 70}/h` : null].filter(Boolean).join(' · ')}</span>
                 {r.state !== 'paid' && <small className="fee__to">{r.s.parent_phone ? `Parent: ${[r.s.parent_name, localPhone(r.s.parent_phone)].filter(Boolean).join(' · ')}` : 'No parent number yet'}</small>}
               </div>
               <label className="fee__amt">

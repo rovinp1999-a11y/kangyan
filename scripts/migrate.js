@@ -154,6 +154,12 @@ const statements = [
   `ALTER TABLE students ADD COLUMN IF NOT EXISTS parent_name TEXT`,
   `ALTER TABLE students ADD COLUMN IF NOT EXISTS parent_relation TEXT`,
   `ALTER TABLE students ADD COLUMN IF NOT EXISTS parent_phone TEXT`,
+  // Each weekly lesson is 1-to-1 or group; a student with both is 'both'.
+  `ALTER TABLE students DROP CONSTRAINT IF EXISTS students_lesson_type_check`,
+  `ALTER TABLE students ADD CONSTRAINT students_lesson_type_check CHECK (lesson_type IN ('private','group','both'))`,
+  `UPDATE students SET lessons = (SELECT jsonb_agg(CASE WHEN l ? 'kind' THEN l ELSE l || jsonb_build_object('kind', CASE WHEN lesson_type = 'group' THEN 'group' ELSE 'private' END) END)
+     FROM jsonb_array_elements(lessons) l)
+   WHERE EXISTS (SELECT 1 FROM jsonb_array_elements(lessons) l WHERE NOT l ? 'kind')`,
 ]
 for (const s of statements) await sql.query(s)
 

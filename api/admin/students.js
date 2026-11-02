@@ -15,7 +15,8 @@
 //   POST { action: 'saveTemplates', templates }   → WhatsApp message templates
 //   POST { action: 'resetCalendar', id }          → new private phone-calendar link
 //   POST { action: 'undo', id }                                                     → withdraw a move / cancellation
-// A student has one or more weekly lessons ({ weekday, start, end }). When a 1-to-1
+// A student has one or more weekly lessons ({ weekday, start, end, kind }), each 1-to-1 or group;
+// the student's lesson_type sums them up ('private', 'group' or 'both'). When a 1-to-1
 // lesson matches a timetable slot, that slot is marked taken, and freed again when nobody uses it.
 import { getSql } from '../_db.js'
 import { requireAdmin } from '../_auth.js'
@@ -23,7 +24,7 @@ import { allow, readBody, send, fail, isDbId } from '../_http.js'
 import { normalPhone, newPin, hashPin, checkPin, encryptPin, decryptPin } from '../_students.js'
 import { LEVELS, SUBJECTS, LESSON_TYPES } from '../../shared/constants.js'
 import { SLOT_COLUMNS } from '../slots.js'
-import { isDate, weekdayOf, dateLabel, covers, addDays, todayMY } from '../../shared/lessons.js'
+import { isDate, weekdayOf, dateLabel, covers, addDays, todayMY, kindOf, typeOf } from '../../shared/lessons.js'
 
 const STUDENT_COLUMNS = `s.id, s.created_at, s.name, s.phone, s.level, s.lesson_type, s.subjects, s.lessons, s.hourly_rate,
   s.school, to_char(s.birthday, 'YYYY-MM-DD') AS birthday, s.email, s.address, s.parent_name, s.parent_relation, s.parent_phone,
@@ -48,8 +49,8 @@ async function uniquePin(sql, phone, exceptId = 0) {
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/
 // Slots a 1-to-1 student holds now or later (lessons that already ended don't count).
-const slotIds = (st) => (st && st.active && st.lesson_type === 'private'
-  ? (st.lessons || []).filter((l) => !l.until || l.until >= todayMY()).map((l) => l.slot_id).filter(Boolean) : [])
+const slotIds = (st) => (st && st.active
+  ? (st.lessons || []).filter((l) => kindOf(l, st) === 'private' && (!l.until || l.until >= todayMY())).map((l) => l.slot_id).filter(Boolean) : [])
 const hm = (x) => { const h = Number(x.slice(0, 2)); const m = x.slice(3, 5); return `${h % 12 || 12}${m === '00' ? '' : `:${m}`} ${h < 12 ? 'AM' : 'PM'}` }
 const sortLessons = (list) => list.sort((a, c) => a.weekday - c.weekday || a.start.localeCompare(c.start) || String(a.from || '').localeCompare(String(c.from || '')))
 
@@ -67,12 +68,15 @@ function splitSeries(lessons, old, fromDate, next, newFrom) {
       if (!(l.from && l.from > until) && until >= today) out.push({ ...l, until })
     } else out.push(l)
   }
-  out.push({ weekday: next.weekday, start: next.start, end: next.end, slot_id: next.slot_id ?? null, from: newFrom, ...(old.until ? { until: old.until } : {}) })
+  out.push({ weekday: next.weekday, start: next.start, end: next.end, kind: next.kind || old.kind, slot_id: next.slot_id ?? null, from: newFrom, ...(old.until ? { until: old.until } : {}) })
   return sortLessons(out)
 }
 
-/** Weekly lessons from the form, each linked to the timetable slot with the same day and times. */
-async function cleanLessons(sql, list) {
+/**
+ * Weekly lessons from the form, each linked to the timetable slot with the same day and times.
+ * A lesson without its own class type gets `kind`.
+ */
+async function cleanLessons(sql, list, kind = 'private') {
   if (!Array.isArray(list)) return []
   const slots = await sql.query(`SELECT ${SLOT_COLUMNS} FROM availability_slots`)
   const out = []
@@ -84,7 +88,7 @@ async function cleanLessons(sql, list) {
     if (until && until < todayMY()) continue // already over
     if (out.some((o) => o.weekday === weekday && o.start === l.start && (o.from || null) === from)) continue
     const slot = slots.find((x) => x.weekday === weekday && x.start === l.start && x.end === l.end)
-    out.push({ weekday, start: l.start, end: l.end, slot_id: slot ? slot.id : null, ...(from ? { from } : {}), ...(until ? { until } : {}) })
+    out.push({ weekday, start: l.start, end: l.end, kind: kindOf(l, { lesson_type: kind }), slot_id: slot ? slot.id : null, ...(from ? { from } : {}), ...(until ? { until } : {}) })
   }
   return sortLessons(out)
 }
@@ -104,6 +108,11 @@ async function clearOrphans(sql, student) {
   return gone.length
 }
 
+/** Save new weekly lessons (from the tutor or an accepted request) and the type they add up to. */
+async function saveLessons(sql, student, lessons) {
+  await sql`UPDATE students SET lessons = ${JSON.stringify(lessons)}::jsonb, lesson_type = ${typeOf(lessons, student.lesson_type)} WHERE id = ${student.id}`
+}
+
 /** Keep the timetable in step with 1-to-1 students' weekly lessons. */
 async function syncSlots(sql, before, after) {
   const was = slotIds(before)
@@ -111,10 +120,8 @@ async function syncSlots(sql, before, after) {
   for (const id of now) if (!was.includes(id)) await sql`UPDATE availability_slots SET status = 'taken' WHERE id = ${id}`
   for (const id of was) {
     if (now.includes(id)) continue
-    const [{ n }] = await sql`
-      SELECT count(*)::int AS n FROM students
-      WHERE active AND lesson_type = 'private' AND lessons @> ${JSON.stringify([{ slot_id: id }])}::jsonb`
-    if (!n) await sql`UPDATE availability_slots SET status = 'open' WHERE id = ${id}`
+    const users = await sql`SELECT lesson_type, lessons FROM students WHERE active AND lessons @> ${JSON.stringify([{ slot_id: id }])}::jsonb`
+    if (!users.some((u) => slotIds(u).includes(id))) await sql`UPDATE availability_slots SET status = 'open' WHERE id = ${id}`
   }
 }
 
@@ -125,7 +132,7 @@ function fields(b, partial) {
   if (has('name')) { out.name = str(b.name, 80); if (out.name.length < 2) return 'Please enter the student name' }
   if (has('phone')) { out.phone = normalPhone(b.phone); if (out.phone.length < 9 || out.phone.length > 15) return 'Please enter a valid WhatsApp number' }
   if (has('level')) { out.level = LEVELS.includes(b.level) ? b.level : null }
-  if (has('lessonType')) { if (!LESSON_TYPES.includes(b.lessonType)) return 'Choose 1-to-1 or group'; out.lesson_type = b.lessonType }
+  if (has('lessonType')) { if (![...LESSON_TYPES, 'both'].includes(b.lessonType)) return 'Choose 1-to-1 or group'; out.lesson_type = b.lessonType }
   if (has('subjects')) { out.subjects = Array.isArray(b.subjects) ? [...new Set(b.subjects.filter((x) => SUBJECTS.includes(x)))] : [] }
   if (has('startDate')) { out.start_date = b.startDate ? (isDate(b.startDate) ? b.startDate : NaN) : null; if (Number.isNaN(out.start_date)) return 'Invalid start date' }
   if (has('notes')) out.notes = str(b.notes, 2000) || null
@@ -166,8 +173,9 @@ export default async function handler(req, res) {
     if (b.action === 'create') {
       const f = fields(b, false)
       if (typeof f === 'string') return fail(res, 400, f)
-      const lessons = await cleanLessons(sql, b.lessons)
+      const lessons = await cleanLessons(sql, b.lessons, f.lesson_type)
       if (!lessons) return fail(res, 400, 'Check the weekly lesson times')
+      f.lesson_type = typeOf(lessons, f.lesson_type)
       const enquiryId = isDbId(Number(b.enquiryId)) ? Number(b.enquiryId) : null
       const pin = await uniquePin(sql, f.phone)
       const [row] = await sql`
@@ -241,7 +249,7 @@ export default async function handler(req, res) {
       // The new pattern starts at the moved lesson (or this one, if moved later in the week).
       const newFrom = b.toDate < b.lessonDate ? b.toDate : b.lessonDate
       const lessons = splitSeries(s.lessons || [], old, b.lessonDate, { weekday, start: b.toStart, end: b.toEnd, slot_id: slot?.id }, newFrom)
-      await sql`UPDATE students SET lessons = ${JSON.stringify(lessons)}::jsonb WHERE id = ${sid}`
+      await saveLessons(sql, s, lessons)
       const after = await getStudent(sql, sid)
       await syncSlots(sql, s, after)
       const cleared = await clearOrphans(sql, after)
@@ -256,7 +264,7 @@ export default async function handler(req, res) {
       if (!isDate(b.lessonDate)) return fail(res, 400, 'Invalid lesson date')
       const lesson = (s.lessons || []).find((l) => l.start === b.lessonStart && covers(l, b.lessonDate))
       if (!lesson) return fail(res, 400, 'That lesson is not on their weekly schedule')
-      const from = { weekday: lesson.weekday, start: lesson.start, end: lesson.end }
+      const from = { weekday: lesson.weekday, start: lesson.start, end: lesson.end, kind: kindOf(lesson, s) }
       let to = null
       if (b.action === 'move') {
         if (!isDate(b.toDate) || !HHMM.test(b.toStart || '') || !HHMM.test(b.toEnd || '') || b.toStart >= b.toEnd) return fail(res, 400, 'Check the new date and times')
@@ -299,9 +307,10 @@ export default async function handler(req, res) {
       const f = fields(b, true)
       if (typeof f === 'string') return fail(res, 400, f)
       if ('lessons' in b) {
-        const lessons = await cleanLessons(sql, b.lessons)
+        const lessons = await cleanLessons(sql, b.lessons, f.lesson_type || before.lesson_type)
         if (!lessons) return fail(res, 400, 'Check the weekly lesson times')
         f.lessons = JSON.stringify(lessons)
+        f.lesson_type = typeOf(lessons, f.lesson_type || before.lesson_type)
       }
       const keys = Object.keys(f)
       if (!keys.length) return fail(res, 400, 'Nothing to update')
@@ -384,13 +393,14 @@ export default async function handler(req, res) {
         // Swap the weekly lesson they asked about for the new time (or add it if they had none).
         const before = await getStudent(sql, rq.student_id)
         if (before) {
-          const next = { weekday: rq.to_weekday, start: rq.to_start, end: rq.to_end, slot_id: rq.to_slot_id ?? null }
           const old = rq.from_lesson && rq.lesson_date && (before.lessons || []).find((l) => l.start === rq.from_lesson.start && covers(l, rq.lesson_date))
+          const was = old || (rq.from_lesson && (before.lessons || []).find((l) => l.weekday === rq.from_lesson.weekday && l.start === rq.from_lesson.start))
+          const next = { weekday: rq.to_weekday, start: rq.to_start, end: rq.to_end, kind: kindOf(was || rq.from_lesson, before), slot_id: rq.to_slot_id ?? null }
           // From that lesson on ("this and all following"); older requests replace the weekly lesson outright.
           const lessons = old
             ? splitSeries(before.lessons || [], old, rq.lesson_date, next, rq.to_date && rq.to_date < rq.lesson_date ? rq.to_date : rq.lesson_date)
             : sortLessons([...(before.lessons || []).filter((l) => !(rq.from_lesson && l.weekday === rq.from_lesson.weekday && l.start === rq.from_lesson.start)), next])
-          await sql`UPDATE students SET lessons = ${JSON.stringify(lessons)}::jsonb WHERE id = ${rq.student_id}`
+          await saveLessons(sql, before, lessons)
           student = await getStudent(sql, rq.student_id)
           await syncSlots(sql, before, student)
           await clearOrphans(sql, student)

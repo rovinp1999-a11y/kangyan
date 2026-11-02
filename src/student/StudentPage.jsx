@@ -81,9 +81,11 @@ function RequestSheet({ kind, lesson: given, preset, st, T, L, lang, token, onCl
   const [weekday, setWeekday] = useState(preset?.date ? weekdayOf(preset.date) : (from || st.weekly[0])?.weekday ?? 0)
   const [start, setStart] = useState(startAt)
   const [end, setEnd] = useState(toT(Math.min(22 * 60, toMin(startAt) + len)))
-  const group = st.student.lessonType === 'group'
+  // The lesson's own class type (a student can have 1-to-1 and group lessons).
+  const group = ((lesson || from)?.kind || st.student.lessonType) === 'group'
   // Like a calendar app: change only this lesson, or this and all following ones. Group classes only move as a whole.
-  const [scope, setScope] = useState(group || kind === 'change' ? 'all' : 'one')
+  const [pickedScope, setScope] = useState(kind === 'change' ? 'all' : 'one')
+  const scope = group ? 'all' : pickedScope
   const sendKind = kind === 'reschedule' && scope === 'all' ? 'change' : kind
   const movable = st.lessons.filter((l) => !l.request && (scope === 'all' || l.hours >= NOTICE_HOURS))
   const [note, setNote] = useState('')
@@ -255,7 +257,7 @@ function studentWeek(st, week, T, L, lang) {
 /** What shows under the calendar for the tapped entry or empty time. */
 function CalDetail({ ev, st, T, L, lang, onSheet, onCancel }) {
   const { info } = ev
-  const priv = st.student.lessonType === 'private'
+  const priv = info.lesson?.kind === 'private'
   const when = (date, a, b) => `${dateLabel(date, lang)} · ${shortRange(a, b, lang)}`
   if (info.type === 'mine') {
     const l = info.lesson
@@ -501,7 +503,7 @@ function Home({ st, T, L, lang, token, notify, go, onSheet }) {
               {next.lesson && !next.lesson.request && (
                 <div className="stu-tile__acts">
                   <button type="button" className="act" onClick={() => onSheet({ kind: 'absence', lesson: next.lesson })}>{T.cantMake}</button>
-                  {canMove && st.student.lessonType !== 'group' && <button type="button" className="act" onClick={() => onSheet({ kind: 'reschedule', lesson: next.lesson })}>{T.reschedule}</button>}
+                  {canMove && next.lesson.kind !== 'group' && <button type="button" className="act" onClick={() => onSheet({ kind: 'reschedule', lesson: next.lesson })}>{T.reschedule}</button>}
                 </div>
               )}
             </>
@@ -535,7 +537,7 @@ function Home({ st, T, L, lang, token, notify, go, onSheet }) {
           <span className="stu-k">{T.regular}</span>
           {st.weekly.length ? (
             <>
-              {st.weekly.map((w) => <b key={`${w.weekday}-${w.start}`}>{T.every(L.weekdays[w.weekday])} · {shortRange(w.start, w.end, lang)}</b>)}
+              {st.weekly.map((w) => <b key={`${w.weekday}-${w.start}`}>{T.every(L.weekdays[w.weekday])} · {shortRange(w.start, w.end, lang)}{st.student.lessonType === 'both' ? ` · ${T.types[w.kind]}` : ''}</b>)}
               <span className="stu-muted">
                 {[T.types[st.student.lessonType], st.student.level && (L.levels[st.student.level] || st.student.level), st.student.subjects.map((x) => L.subjects[x] || x).join(lang === 'zh' ? '、' : ', ')].filter(Boolean).join(' · ')}
               </span>

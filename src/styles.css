@@ -846,7 +846,9 @@ textarea.wz__input { resize: vertical; min-height: 0; font-size: 1rem; }
 .wl__row select { min-height: 40px !important; padding: 6px 8px !important; }
 .wl__row .icon-btn { width: 36px; height: 36px; }
 .wl__to { font-size: .82rem; color: var(--muted); }
+.wl__kind { grid-column: 1 / -1; justify-self: start; }
 .wl__info { grid-column: 1 / -1; font-size: .76rem; color: var(--muted); }
+.sform__hint { font-size: .82rem; color: var(--muted); margin: 0; }
 .wl__add { justify-self: start; }
 .wl__add .ic { width: 15px; height: 15px; }
 @media (max-width: 420px) {
@@ -856,7 +858,8 @@ textarea.wz__input { resize: vertical; min-height: 0; font-size: 1rem; }
   .wl__start { grid-column: 1; grid-row: 2; }
   .wl__end { grid-column: 2 / 4; grid-row: 2; }
   .wl__to { display: none; }
-  .wl__info { grid-row: 3; }
+  .wl__kind { grid-row: 3; }
+  .wl__info { grid-row: 4; }
 }
 /* Students as rows; the profile opens in the drawer */
 .srows { background: var(--white); border: 2px solid var(--ink); border-radius: var(--radius); overflow: hidden; }
@@ -880,6 +883,10 @@ textarea.wz__input { resize: vertical; min-height: 0; font-size: 1rem; }
 .sblock .adm-filters .adm-select { flex: 1 1 auto; }
 .savatar { flex: none; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; font-family: var(--ff-display); font-weight: 800; color: var(--white); background: var(--purple); border: 2px solid var(--ink); }
 .savatar--group { background: var(--green); }
+.savatar--both { background: linear-gradient(135deg, var(--purple) 50%, var(--green) 50%); }
+.srow__lessons > span.is-group { background: #DCFCE7; }
+.kchip { margin-left: 8px; font-size: .72rem; font-weight: 700; padding: 1px 8px; border-radius: 999px; background: #EDE9FE; color: var(--ink); vertical-align: middle; }
+.kchip--group { background: #DCFCE7; }
 @media (max-width: 760px) {
   .srow--head { display: none; }
   .srow { grid-template-columns: minmax(0, 1fr) 18px; gap: 6px 10px; padding: 12px 14px; }

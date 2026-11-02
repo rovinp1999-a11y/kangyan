@@ -45,6 +45,18 @@ export function upcomingDates(slot, { from, weeks = WEEKS_AHEAD, now = Date.now(
   return out
 }
 
+/**
+ * A weekly lesson's class type: 'private' (1-to-1) or 'group'. Lessons saved before each one
+ * had its own type follow the student's.
+ */
+export const kindOf = (l, student) => (l?.kind === 'group' || l?.kind === 'private' ? l.kind : student?.lesson_type === 'group' ? 'group' : 'private')
+
+/** The student's overall type from the weekly lessons still going: 'private', 'group' or 'both'. */
+export function typeOf(lessons, fallback = 'private', today = todayMY()) {
+  const kinds = new Set((lessons || []).filter((l) => !l.until || l.until >= today).map((l) => kindOf(l, { lesson_type: fallback })))
+  return kinds.size > 1 ? 'both' : kinds.size ? [...kinds][0] : fallback === 'group' ? 'group' : fallback === 'both' ? 'both' : 'private'
+}
+
 /** First date on or after `date` that falls on `weekday` (0 = Monday). */
 export const firstOn = (date, weekday) => addDays(date, (weekday - weekdayOf(date) + 7) % 7)
 

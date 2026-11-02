@@ -1,6 +1,6 @@
 // Every lesson a student has between two dates and what happened to it, plus the monthly
 // fee suggestion. Shared by the API (student page, phone calendar) and the admin.
-import { covers, addDays, todayMY, startsAt } from './lessons.js'
+import { covers, addDays, todayMY, startsAt, kindOf } from './lessons.js'
 import { GROUP_FEE, PRIVATE_FEE_FROM, feeStage } from './constants.js'
 
 const toMin = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
@@ -11,6 +11,7 @@ const toMin = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
  *   absent    – student reported absent (still a lesson for fees)
  *   cancelled – cancelled by the tutor (not charged)
  *   moved     – moved to another time (the moved-in lesson is listed on its new date)
+ * and a kind ('private' or 'group'), from its weekly lesson.
  * Only approved changes count; requests still waiting don't change anything yet.
  */
 export function occurrences(student, requests, from, to) {
@@ -21,12 +22,13 @@ export function occurrences(student, requests, from, to) {
       if (!covers(l, d) || (student.start_date && d < student.start_date)) continue
       const r = done.find((x) => x.kind !== 'change' && x.lesson_date === d && (!x.from_lesson || x.from_lesson.start === l.start))
       const status = !r ? 'lesson' : r.kind === 'reschedule' ? 'moved' : r.by_tutor ? 'cancelled' : 'absent'
-      out.push({ date: d, start: l.start, end: l.end, status, request: r || null })
+      out.push({ date: d, start: l.start, end: l.end, kind: kindOf(l, student), status, request: r || null })
     }
   }
   for (const r of done) {
     if (r.kind === 'reschedule' && r.to_date && r.to_start && r.to_date >= from && r.to_date <= to) {
-      out.push({ date: r.to_date, start: r.to_start, end: r.to_end, status: 'lesson', movedFrom: r.lesson_date, request: r })
+      const was = r.from_lesson && (student.lessons || []).find((l) => l.start === r.from_lesson.start && covers(l, r.lesson_date))
+      out.push({ date: r.to_date, start: r.to_start, end: r.to_end, kind: kindOf(r.from_lesson?.kind ? r.from_lesson : was, student), status: 'lesson', movedFrom: r.lesson_date, request: r })
     }
   }
   return out.sort((a, b) => a.date.localeCompare(b.date) || a.start.localeCompare(b.start))
@@ -44,7 +46,8 @@ export const monthOf = (date) => date.slice(0, 7)
 /**
  * Suggested fee for a month: group classes are a fixed monthly fee by stage; 1-to-1 is the
  * hourly rate × hours that month (absences are still charged, lessons the tutor cancelled aren't).
- * Returns null when there is nothing to suggest (e.g. level 'Other').
+ * A 1-to-1 student who also joins a group class pays their hourly rate for the group hours too,
+ * not the group fee. Returns null when there is nothing to suggest (e.g. level 'Other').
  */
 export function suggestedFee(student, requests, month) {
   if (student.lesson_type === 'group') return GROUP_FEE[feeStage(student.level)] ?? null

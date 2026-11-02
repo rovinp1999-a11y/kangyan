@@ -131,6 +131,8 @@ export { ICONS, Icon } from '../components/Icon.jsx'
 
 
 export const KIND_SHORT = { private: '1-to-1', group: 'Group', both: 'Both' }
+/** A student's class type; 'both' means they have 1-to-1 and group lessons. */
+export const STUDENT_KIND = { ...KIND_SHORT, both: '1-to-1 + group' }
 
 export function StatusDot({ status }) {
   return <span className="st" style={{ '--c': STATUS_META[status].color }}><span className="dot" />{STATUS_META[status].label}</span>
