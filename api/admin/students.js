@@ -4,7 +4,11 @@
 //   POST { action: 'update', id, ...fields }  → { student }
 //   POST { action: 'resetPin', id }           → { pin }
 //   POST { action: 'delete', id }             → removes the student and their requests
-//   POST { action: 'decide', id, status, reply } → approve / reject a pending request
+//   POST { action: 'decide', id, status, reply, time? } → accept / decline a pending request;
+//        `time` ({ date | weekday, start, end }) accepts it at a different time agreed with the student
+//   POST { action: 'move', studentId, lessonDate, lessonStart, toDate, toStart, toEnd } → tutor moves one lesson (this week only)
+//   POST { action: 'cancelLesson', studentId, lessonDate, lessonStart }              → tutor cancels one lesson
+//   POST { action: 'undo', id }                                                     → withdraw a move / cancellation
 // A student has one or more weekly lessons ({ weekday, start, end }). When a 1-to-1
 // lesson matches a timetable slot, that slot is marked taken, and freed again when nobody uses it.
 import { getSql } from '../_db.js'
@@ -13,12 +17,12 @@ import { allow, readBody, send, fail, isDbId } from '../_http.js'
 import { normalPhone, newPin, hashPin, checkPin } from '../_students.js'
 import { LEVELS, SUBJECTS, LESSON_TYPES } from '../../shared/constants.js'
 import { SLOT_COLUMNS } from '../slots.js'
-import { isDate } from '../../shared/lessons.js'
+import { isDate, weekdayOf, dateLabel } from '../../shared/lessons.js'
 
 const STUDENT_COLUMNS = `s.id, s.created_at, s.name, s.phone, s.level, s.lesson_type, s.subjects, s.lessons,
   to_char(s.start_date, 'YYYY-MM-DD') AS start_date, s.active, s.enquiry_id, s.lang, s.notes, s.last_login`
 const REQUEST_COLUMNS = `r.id, r.created_at, r.student_id, r.kind, to_char(r.lesson_date, 'YYYY-MM-DD') AS lesson_date, r.from_lesson,
-  r.to_slot_id, to_char(r.to_date, 'YYYY-MM-DD') AS to_date, r.to_label, r.recording, r.note, r.status, r.reply, r.decided_at`
+  r.to_slot_id, to_char(r.to_date, 'YYYY-MM-DD') AS to_date, r.to_weekday, r.to_start, r.to_end, r.to_label, r.recording, r.note, r.status, r.reply, r.decided_at`
 const str = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '')
 
 async function getStudent(sql, id) {
@@ -51,6 +55,21 @@ async function cleanLessons(sql, list) {
     out.push({ weekday, start: l.start, end: l.end, slot_id: slot ? slot.id : null })
   }
   return out.sort((a, b) => a.weekday - b.weekday || a.start.localeCompare(b.start))
+}
+
+/**
+ * After a student's weekly lessons change, clear upcoming one-off changes and pending asks
+ * that belong to a weekly time they no longer have (otherwise that week would get an extra lesson).
+ * Returns how many were cleared.
+ */
+async function clearOrphans(sql, student) {
+  const weekly = student?.lessons || []
+  const rows = await sql`
+    SELECT id, from_lesson FROM student_requests
+    WHERE student_id = ${student.id} AND kind <> 'change' AND status IN ('pending','approved') AND lesson_date >= (now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date`
+  const gone = rows.filter((x) => x.from_lesson && !weekly.some((l) => l.weekday === x.from_lesson.weekday && l.start === x.from_lesson.start)).map((x) => x.id)
+  if (gone.length) await sql`UPDATE student_requests SET status = 'cancelled', decided_at = now(), reply = COALESCE(reply, 'Weekly time changed') WHERE id = ANY(${gone})`
+  return gone.length
 }
 
 /** Keep the timetable in step with 1-to-1 students' weekly lessons. */
@@ -115,6 +134,47 @@ export default async function handler(req, res) {
       return send(res, 201, { ok: true, student: created, pin })
     }
 
+    if (b.action === 'move' || b.action === 'cancelLesson') {
+      // One lesson on one date changes; the weekly pattern and every other week stay as they are.
+      const sid = Number(b.studentId)
+      const s = isDbId(sid) ? await getStudent(sql, sid) : null
+      if (!s) return fail(res, 404, 'Student not found')
+      if (!isDate(b.lessonDate)) return fail(res, 400, 'Invalid lesson date')
+      const lesson = (s.lessons || []).find((l) => l.weekday === weekdayOf(b.lessonDate) && l.start === b.lessonStart)
+      if (!lesson) return fail(res, 400, 'That lesson is not on their weekly schedule')
+      const from = { weekday: lesson.weekday, start: lesson.start, end: lesson.end }
+      let to = null
+      if (b.action === 'move') {
+        if (!isDate(b.toDate) || !HHMM.test(b.toStart || '') || !HHMM.test(b.toEnd || '') || b.toStart >= b.toEnd) return fail(res, 400, 'Check the new date and times')
+        const weekday = weekdayOf(b.toDate)
+        const [slot] = await sql.query(`SELECT id FROM availability_slots WHERE weekday = $1 AND start_time = $2::time AND end_time = $3::time`, [weekday, b.toStart, b.toEnd])
+        const hm = (x) => { const h = Number(x.slice(0, 2)); const m = x.slice(3, 5); return `${h % 12 || 12}${m === '00' ? '' : `:${m}`} ${h < 12 ? 'AM' : 'PM'}` }
+        to = { date: b.toDate, weekday, start: b.toStart, end: b.toEnd, slot: slot?.id ?? null, label: `${dateLabel(b.toDate)} ${hm(b.toStart)}–${hm(b.toEnd)}` }
+      }
+      const kind = b.action === 'move' ? 'reschedule' : 'absence'
+      // Reuse the request already on this lesson (a student's pending ask, or an earlier change) so there is only ever one.
+      const [existing] = await sql.query(`SELECT id FROM student_requests WHERE student_id = $1 AND lesson_date = $2::date AND kind <> 'change'
+          AND status IN ('pending','approved') AND (from_lesson IS NULL OR from_lesson->>'start' = $3) ORDER BY created_at DESC LIMIT 1`, [sid, b.lessonDate, lesson.start])
+      let rid
+      if (existing) {
+        await sql`
+          UPDATE student_requests SET kind = ${kind}, status = 'approved', decided_at = now(), from_lesson = ${JSON.stringify(from)}::jsonb,
+            to_date = ${to?.date ?? null}, to_weekday = ${to?.weekday ?? null}, to_start = ${to?.start ?? null}, to_end = ${to?.end ?? null},
+            to_slot_id = ${to?.slot ?? null}, to_label = ${to?.label ?? null}, reply = COALESCE(reply, 'Changed by your tutor')
+          WHERE id = ${existing.id}`
+        rid = existing.id
+      } else {
+        const [row] = await sql`
+          INSERT INTO student_requests (student_id, kind, lesson_date, from_lesson, to_slot_id, to_date, to_weekday, to_start, to_end, to_label, status, reply, decided_at)
+          VALUES (${sid}, ${kind}, ${b.lessonDate}, ${JSON.stringify(from)}::jsonb, ${to?.slot ?? null}, ${to?.date ?? null}, ${to?.weekday ?? null},
+            ${to?.start ?? null}, ${to?.end ?? null}, ${to?.label ?? null}, 'approved', 'Changed by your tutor', now())
+          RETURNING id`
+        rid = row.id
+      }
+      const [request] = await sql.query(`SELECT ${REQUEST_COLUMNS} FROM student_requests r WHERE r.id = $1`, [rid])
+      return send(res, 200, { ok: true, request })
+    }
+
     if (!isDbId(id)) return fail(res, 400, 'Invalid id')
 
     if (b.action === 'update') {
@@ -133,7 +193,8 @@ export default async function handler(req, res) {
       const after = await getStudent(sql, id)
       // Free or take slots when the lessons, class type or active state changed.
       await syncSlots(sql, before, after)
-      return send(res, 200, { ok: true, student: after })
+      const cleared = 'lessons' in f ? await clearOrphans(sql, after) : 0
+      return send(res, 200, { ok: true, student: after, cleared })
     }
 
     if (b.action === 'resetPin') {
@@ -152,25 +213,58 @@ export default async function handler(req, res) {
       return send(res, 200, { ok: true, id })
     }
 
+    if (b.action === 'undo') {
+      const rows = await sql`UPDATE student_requests SET status = 'cancelled', decided_at = now() WHERE id = ${id} AND kind <> 'change' AND status IN ('pending','approved') RETURNING id`
+      if (!rows.length) return fail(res, 409, 'Nothing to undo')
+      const [request] = await sql.query(`SELECT ${REQUEST_COLUMNS} FROM student_requests r WHERE r.id = $1`, [id])
+      return send(res, 200, { ok: true, request })
+    }
+
     if (b.action === 'decide') {
       if (!['approved', 'rejected'].includes(b.status)) return fail(res, 400, 'Invalid decision')
       const reply = str(b.reply, 500) || null
-      const [r] = await sql`
+      const [cur] = await sql.query(`SELECT ${REQUEST_COLUMNS} FROM student_requests r WHERE r.id = $1`, [id])
+      if (!cur || cur.status !== 'pending') return fail(res, 409, 'This request was already answered or withdrawn')
+
+      // Accepting at another time (agreed on WhatsApp): replace the requested time first.
+      if (b.status === 'approved' && b.time && cur.kind !== 'absence') {
+        const t = b.time
+        if (!HHMM.test(t.start || '') || !HHMM.test(t.end || '') || t.start >= t.end) return fail(res, 400, 'Check the start and end time')
+        let date = null
+        let weekday
+        if (cur.kind === 'reschedule') {
+          if (!isDate(t.date)) return fail(res, 400, 'Pick a date')
+          date = t.date
+          weekday = weekdayOf(date)
+        } else {
+          weekday = Number(t.weekday)
+          if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6) return fail(res, 400, 'Pick a day')
+        }
+        const [slot] = await sql.query(`SELECT id FROM availability_slots WHERE weekday = $1 AND start_time = $2::time AND end_time = $3::time`, [weekday, t.start, t.end])
+        const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+        const hm = (x) => { const h = Number(x.slice(0, 2)); const m = x.slice(3, 5); return `${h % 12 || 12}${m === '00' ? '' : `:${m}`} ${h < 12 ? 'AM' : 'PM'}` }
+        const label = `${date ? dateLabel(date) : `Every ${days[weekday]}`} ${hm(t.start)}–${hm(t.end)}`
+        await sql`
+          UPDATE student_requests SET to_date = ${date}, to_weekday = ${weekday}, to_start = ${t.start}, to_end = ${t.end}, to_slot_id = ${slot?.id ?? null}, to_label = ${label}
+          WHERE id = ${id}`
+      }
+
+      const [rq] = await sql`
         UPDATE student_requests SET status = ${b.status}, reply = ${reply}, decided_at = now()
-        WHERE id = ${id} AND status = 'pending' RETURNING id, student_id, kind, to_slot_id, from_lesson`
-      if (!r) return fail(res, 409, 'This request was already answered or withdrawn')
+        WHERE id = ${id} AND status = 'pending' RETURNING id, student_id, kind, to_slot_id, to_weekday, to_start, to_end, from_lesson`
+      if (!rq) return fail(res, 409, 'This request was already answered or withdrawn')
       let student = null
-      if (b.status === 'approved' && r.kind === 'change' && r.to_slot_id) {
-        // Swap the weekly lesson they asked about for the new slot (or add it if they had none).
-        const before = await getStudent(sql, r.student_id)
-        const [to] = await sql.query(`SELECT ${SLOT_COLUMNS} FROM availability_slots WHERE id = $1`, [r.to_slot_id])
-        if (before && to) {
-          const keep = (before.lessons || []).filter((l) => !(r.from_lesson && l.weekday === r.from_lesson.weekday && l.start === r.from_lesson.start))
-          const lessons = [...keep, { weekday: to.weekday, start: to.start, end: to.end, slot_id: to.id }]
+      if (b.status === 'approved' && rq.kind === 'change' && rq.to_start) {
+        // Swap the weekly lesson they asked about for the new time (or add it if they had none).
+        const before = await getStudent(sql, rq.student_id)
+        if (before) {
+          const keep = (before.lessons || []).filter((l) => !(rq.from_lesson && l.weekday === rq.from_lesson.weekday && l.start === rq.from_lesson.start))
+          const lessons = [...keep, { weekday: rq.to_weekday, start: rq.to_start, end: rq.to_end, slot_id: rq.to_slot_id ?? null }]
             .sort((a, c) => a.weekday - c.weekday || a.start.localeCompare(c.start))
-          await sql`UPDATE students SET lessons = ${JSON.stringify(lessons)}::jsonb WHERE id = ${r.student_id}`
-          student = await getStudent(sql, r.student_id)
+          await sql`UPDATE students SET lessons = ${JSON.stringify(lessons)}::jsonb WHERE id = ${rq.student_id}`
+          student = await getStudent(sql, rq.student_id)
           await syncSlots(sql, before, student)
+          await clearOrphans(sql, student)
         }
       }
       const [request] = await sql.query(`SELECT ${REQUEST_COLUMNS} FROM student_requests r WHERE r.id = $1`, [id])

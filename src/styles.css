@@ -590,6 +590,7 @@ textarea.wz__input { resize: vertical; min-height: 0; font-size: 1rem; }
 .aside__nav button.is-on { background: var(--ink); color: var(--white); }
 .aside__nav .ic { width: 19px; height: 19px; flex: none; }
 .aside__nav .badge { margin-left: auto; }
+.aside__nav .tab-short { display: none; }
 .aside__foot { margin-top: auto; display: flex; gap: 8px; }
 .admin__logo { margin-right: 0; }
 @media (max-width: 960px) {
@@ -598,6 +599,9 @@ textarea.wz__input { resize: vertical; min-height: 0; font-size: 1rem; }
   .aside__foot { margin: 0 0 0 auto; }
   .aside__nav { position: fixed; left: 10px; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom)); z-index: 45; display: flex; padding: 5px; gap: 2px; background: var(--white); border: 2px solid var(--ink); border-radius: 18px; box-shadow: 0 12px 30px -10px rgba(21,18,28,.5); }
   .aside__nav button { flex: 1; flex-direction: column; gap: 3px; padding: 8px 2px 7px; font-size: .72rem; border-radius: 13px; text-align: center; position: relative; }
+  .aside__nav .tab-full { display: none; }
+  .aside__nav .tab-short { display: inline; }
+  .aside__nav button { font-size: .66rem !important; padding: 8px 0 7px !important; }
   .aside__nav .badge { position: absolute; top: 3px; right: calc(50% - 22px); margin: 0; min-width: 18px; height: 18px; font-size: .66rem; }
   .admin.is-authed .admin__main { padding-bottom: calc(104px + env(safe-area-inset-bottom)); }
   .toast { bottom: calc(92px + env(safe-area-inset-bottom)); }
@@ -818,7 +822,12 @@ textarea.wz__input { resize: vertical; min-height: 0; font-size: 1rem; }
 .sreq__note { font-size: .88rem; color: var(--ink-soft); background: var(--paper); border-radius: 10px; padding: 8px 10px; }
 .sreq__reply { font: inherit; font-size: 16px; padding: 9px 12px; border: 2px solid var(--line); border-radius: 12px; }
 .sreq__reply:focus { outline: 0; border-color: var(--ink); }
-.sreq__acts { display: flex; justify-content: flex-end; gap: 8px; }
+.sreq__acts { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.sreq__acts .act .ic { width: 15px; height: 15px; }
+.decide { display: grid; gap: 8px; }
+.decide__time { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px; border-radius: 12px; background: #FEF3C7; border: 1.5px solid var(--yellow); }
+.decide__time input, .decide__time select { font: inherit; font-size: 16px; min-height: 40px; padding: 6px 10px; border: 2px solid var(--ink); border-radius: 10px; background: var(--white); color: var(--ink); }
+.decide__time span { font-size: .84rem; color: var(--muted); }
 .sreq-told { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 12px; border-radius: 14px; background: rgba(16,185,129,.12); border: 1.5px solid rgba(16,185,129,.5); font-weight: 600; font-size: .9rem; }
 .sreq-told .icon-btn { margin-left: auto; width: 34px; height: 34px; }
 .slist { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 12px; }
@@ -967,6 +976,10 @@ textarea.wz__input { resize: vertical; min-height: 0; font-size: 1rem; }
 .stu-dates { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 12px 12px; }
 .stu-dates button { font: inherit; font-size: .84rem; font-weight: 600; padding: 7px 12px; border: 2px solid var(--ink); border-radius: 999px; background: var(--white); color: var(--ink); cursor: pointer; }
 .stu-dates button.is-on { background: var(--green); }
+.stu-when { display: grid; gap: 8px; }
+.stu-when__row { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+.stu-field select { font: inherit; font-size: 16px; width: 100%; box-sizing: border-box; min-height: 48px; padding: 10px 10px; border: 2px solid var(--ink); border-radius: 12px; background: var(--white); color: var(--ink); }
+@media (max-width: 420px) { .stu-when__row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .stu-when__row > :first-child { grid-column: 1 / -1; } }
 .stu-sheet__acts { display: flex; justify-content: flex-end; gap: 8px; position: sticky; bottom: 0; background: var(--white); padding-top: 6px; }
 .stu-opt > button:focus-visible, .stu-dates button:focus-visible, .stu-lang:focus-visible, .stu-link:focus-visible { outline: 3px solid var(--purple); outline-offset: 2px; }
 @media (min-width: 640px) {
@@ -1034,6 +1047,10 @@ textarea.wz__input { resize: vertical; min-height: 0; font-size: 1rem; }
 .wc__list .wc__ev-t { font-size: .92rem; }
 .wc__list .wc__ev-s { font-size: .82rem; margin-left: auto; }
 .wc__list .wc__badge { position: static; margin-left: 4px; }
+.wc__col.is-pickable { cursor: copy; }
+.wc__col.is-pickable:hover { background-color: rgba(124,58,237,.04); }
+.wc__ask { font: inherit; font-size: .86rem; font-weight: 600; padding: 10px 12px; border: 2px dashed var(--line); border-radius: 12px; background: none; color: var(--purple); cursor: pointer; }
+.wc__ask:hover { border-color: var(--purple); }
 .wc__empty { font-size: .88rem; color: var(--muted); padding: 14px 0; text-align: center; }
 /* student calendar card */
 .stu-cal__head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
@@ -1074,6 +1091,10 @@ textarea.wz__input { resize: vertical; min-height: 0; font-size: 1rem; }
 .acal-p__who span { font-size: .8rem; color: var(--muted); }
 .acal-p__state { font-size: .86rem; font-weight: 600; }
 .acal-p__note { font-size: .84rem; color: var(--ink-soft); }
+.acal-p__once { display: flex; flex-wrap: wrap; gap: 6px; }
+.acal-p__once .act { min-height: 36px; padding: 6px 11px; font-size: .82rem; }
+.acal-p__once .act .ic { width: 15px; height: 15px; }
+.acal-pick .btn { margin-left: auto; }
 .acal-p__acts { display: flex; flex-wrap: wrap; gap: 6px; }
 .acal-p__acts .act { min-height: 36px; padding: 6px 11px; font-size: .82rem; }
 

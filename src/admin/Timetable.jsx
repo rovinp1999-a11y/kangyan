@@ -1,8 +1,7 @@
 // Weekly availability: add, edit, open/close slots and see who picked each one.
 import { useMemo, useState } from 'react'
 import { WEEKDAYS, WEEKDAYS_SHORT, SLOT_KINDS, SLOT_KIND_LABEL, formatRange, slotLabel } from '../../shared/constants.js'
-import { Icon, KIND_SHORT, api, sortSlots, typeOf, useStored } from './lib.jsx'
-import { AdminCalendar } from './Calendar.jsx'
+import { Icon, KIND_SHORT, api, sortSlots, typeOf } from './lib.jsx'
 import { Person } from './Enquiries.jsx'
 
 const PRESETS = [
@@ -13,8 +12,7 @@ const PRESETS = [
 /* timetable                                                           */
 /* ------------------------------------------------------------------ */
 
-export function SlotsTab({ slots, setSlots, enquiries, students = [], requests = [], setStudents, setRequests, refreshSlots, onEditStudent, onAuthError, notify, onOpen }) {
-  const [view, setView] = useStored('kangyan-admin-tt-view', 'calendar')
+export function SlotsTab({ slots, setSlots, enquiries, students = [], onAuthError, notify, onOpen }) {
   // Open enquiries (not closed) that picked each slot.
   const interest = useMemo(() => {
     const m = {}
@@ -130,25 +128,8 @@ export function SlotsTab({ slots, setSlots, enquiries, students = [], requests =
   const openCount = slots.filter((s) => s.status === 'open').length
   const kindCount = (k) => slots.filter((s) => s.kind === k).length
 
-  const viewPick = (
-    <div className="viewpick tt-view" role="group" aria-label="View">
-      {[['calendar', 'Calendar', 'calendar'], ['slots', 'Weekly slots', 'list']].map(([k, label, icon]) => (
-        <button key={k} type="button" className={view === k ? 'is-on' : ''} aria-pressed={view === k} onClick={() => setView(k)}><Icon name={icon} /><span>{label}</span></button>
-      ))}
-    </div>
-  )
-  if (view === 'calendar') {
-    return (
-      <>
-        {viewPick}
-        <AdminCalendar slots={slots} setSlots={setSlots} students={students} setStudents={setStudents} requests={requests} setRequests={setRequests} refreshSlots={refreshSlots} notify={notify} onAuthError={onAuthError} onEditStudent={onEditStudent} />
-      </>
-    )
-  }
-
   return (
     <>
-      {viewPick}
       <form className="adm-card adm-add" onSubmit={add}>
         <h2 className="adm-add__title"><Icon name="plus" />Add a slot</h2>
 
@@ -203,7 +184,7 @@ export function SlotsTab({ slots, setSlots, enquiries, students = [], requests =
         <span><b>{kindCount('group')}</b> group</span>
         <span><b>{kindCount('both')}</b> both</span>
         <span><b>{groupWant}</b> want group</span>
-        <span className="adm-summary__hint">Tap a time to change its day or hours. Set each slot to 1-to-1, Group or Both, and switch it off when it's taken. Under each slot you can see who picked it; tap a name to open their enquiry.</span>
+        <span className="adm-summary__hint">These are the times new enquiries can pick on the website. Switch a slot to Taken to stop offering it. Tap a time to change its day or hours. Under each slot you can see which enquiries picked it. Your actual classes are on My calendar.</span>
       </div>
 
       <div className="adm-week">

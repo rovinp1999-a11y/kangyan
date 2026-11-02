@@ -104,6 +104,12 @@ const statements = [
      FROM availability_slots a WHERE a.id = s.slot_id AND s.lessons = '[]'::jsonb`,
   // which weekly lesson a request is about: { weekday, start, end }
   `ALTER TABLE student_requests ADD COLUMN IF NOT EXISTS from_lesson JSONB`,
+  // students can ask for any time, not only timetable slots
+  `ALTER TABLE student_requests ADD COLUMN IF NOT EXISTS to_weekday SMALLINT`,
+  `ALTER TABLE student_requests ADD COLUMN IF NOT EXISTS to_start TEXT`,
+  `ALTER TABLE student_requests ADD COLUMN IF NOT EXISTS to_end TEXT`,
+  `UPDATE student_requests r SET to_start = to_char(a.start_time, 'HH24:MI'), to_end = to_char(a.end_time, 'HH24:MI'), to_weekday = a.weekday
+     FROM availability_slots a WHERE a.id = r.to_slot_id AND r.to_start IS NULL`,
 ]
 for (const s of statements) await sql.query(s)
 

@@ -7,16 +7,19 @@
 // Error `code`s let the page show its own translated message.
 import { getSql } from './_db.js'
 import { allow, readBody, send, fail, clientIp, isDbId } from './_http.js'
-import { SLOT_COLUMNS } from './slots.js'
 import { normalPhone, isPin, checkPin, hashPin, issueStudentToken, requireStudent } from './_students.js'
 import { notify } from './_notify.js'
-import { slotFits, slotLabel } from '../shared/constants.js'
-import { NOTICE_HOURS, WEEKS_AHEAD, upcomingDates, hoursUntil, todayMY, isDate, weekdayOf, startsAt, dateLabel } from '../shared/lessons.js'
+import { NOTICE_HOURS, WEEKS_AHEAD, upcomingDates, hoursUntil, todayMY, isDate, weekdayOf, startsAt, dateLabel, addDays } from '../shared/lessons.js'
 
 const MAX_FAILS = 8
 const WINDOW_MIN = 15
 const REQ_COLUMNS = `id, created_at, kind, to_char(lesson_date, 'YYYY-MM-DD') AS lesson_date, from_lesson, to_slot_id,
-  to_char(to_date, 'YYYY-MM-DD') AS to_date, to_label, recording, note, status, reply, decided_at`
+  to_char(to_date, 'YYYY-MM-DD') AS to_date, to_weekday, to_start, to_end, to_label, recording, note, status, reply, decided_at`
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/
+const MAX_LESSON_MIN = 4 * 60
+const toMin = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
+/** A requested start/end pair: real times, start before end, at most 4 hours. */
+const okTimes = (a, b) => HHMM.test(a || '') && HHMM.test(b || '') && a < b && toMin(b) - toMin(a) <= MAX_LESSON_MIN
 const ACTIVE = ['pending', 'approved']
 const str = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '')
 
@@ -42,11 +45,35 @@ async function login(req, res, sql, b) {
 }
 
 const sameLesson = (a, b) => a && b && a.weekday === b.weekday && a.start === b.start
-const weeklyLabel = (w) => slotLabel(w)
+const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+const hm = (t) => { const h = Number(t.slice(0, 2)); const m = t.slice(3, 5); return `${h % 12 || 12}${m === '00' ? '' : `:${m}`} ${h < 12 ? 'AM' : 'PM'}` }
+const span = (a, b) => `${hm(a)}–${hm(b)}`
+
+/**
+ * When other confirmed students have lessons over the next weeks (no names): their
+ * weekly lessons, minus approved absences and moves away, plus lessons moved in.
+ */
+async function occupied(sql, me, dates) {
+  const others = await sql`SELECT id, lessons, to_char(start_date, 'YYYY-MM-DD') AS start_day FROM students WHERE active AND id <> ${me}`
+  const reqs = await sql.query(`SELECT student_id, kind, status, to_char(lesson_date, 'YYYY-MM-DD') AS lesson_date, from_lesson,
+      to_char(to_date, 'YYYY-MM-DD') AS to_date, to_start, to_end
+    FROM student_requests WHERE student_id <> $1 AND status = ANY($2) AND (lesson_date >= $3::date OR to_date >= $3::date)`, [me, ACTIVE, dates[0]])
+  const out = []
+  for (const o of others) {
+    for (const l of o.lessons || []) {
+      for (const date of dates) {
+        if (weekdayOf(date) !== l.weekday || (o.start_day && date < o.start_day)) continue
+        const gone = reqs.some((r) => r.student_id === o.id && r.status === 'approved' && r.kind !== 'change' && r.lesson_date === date && (!r.from_lesson || r.from_lesson.start === l.start))
+        if (!gone) out.push({ date, start: l.start, end: l.end })
+      }
+    }
+  }
+  for (const r of reqs) if (r.kind === 'reschedule' && r.to_date && r.to_start && dates.includes(r.to_date)) out.push({ date: r.to_date, start: r.to_start, end: r.to_end })
+  return out
+}
 
 /** Everything the student page shows. */
 async function state(sql, s) {
-  const slots = await sql.query(`SELECT ${SLOT_COLUMNS} FROM availability_slots ORDER BY weekday, start_time`)
   const weekly = (Array.isArray(s.lessons) ? s.lessons : []).slice().sort((a, b) => a.weekday - b.weekday || a.start.localeCompare(b.start))
   const requests = await sql.query(`SELECT ${REQ_COLUMNS} FROM student_requests WHERE student_id = $1 ORDER BY created_at DESC LIMIT 60`, [s.id])
   const [{ start_day: startDay }] = await sql`SELECT to_char(start_date, 'YYYY-MM-DD') AS start_day FROM students WHERE id = ${s.id}`
@@ -60,27 +87,17 @@ async function state(sql, s) {
       return { ...l, hours: hoursUntil(l.date, l.start), request: r || null }
     })
 
-  // One-off lessons already booked into a slot by anyone (so two students can't take the same replacement).
-  const booked = await sql`
-    SELECT to_slot_id, to_char(to_date, 'YYYY-MM-DD') AS d, student_id FROM student_requests
-    WHERE kind = 'reschedule' AND status = ANY(${ACTIVE}) AND to_date >= ${todayMY()}::date`
-  const busy = new Set(booked.map((x) => `${x.to_slot_id}|${x.d}`))
-  const options = slots
-    .filter((x) => x.status === 'open' && slotFits(x.kind, s.lesson_type) && !weekly.some((w) => sameLesson(w, x)))
-    .map((x) => ({ ...x, label: slotLabel(x), dates: upcomingDates(x, { weeks: WEEKS_AHEAD }).filter((d) => !busy.has(`${x.id}|${d}`)) }))
+  // The calendar covers this week and the next ones, from Monday.
+  const today = todayMY()
+  const monday = addDays(today, -weekdayOf(today))
+  const dates = Array.from({ length: WEEKS_AHEAD * 7 }, (_, i) => addDays(monday, i))
 
   return {
     student: { name: s.name, level: s.level, lessonType: s.lesson_type, subjects: s.subjects, lang: s.lang },
     weekly: weekly.map((w) => ({ weekday: w.weekday, start: w.start, end: w.end })),
-    lessons, requests, options, noticeHours: NOTICE_HOURS, weeksAhead: WEEKS_AHEAD, today: todayMY(), startDay: startDay || null,
-    // For the calendar: the tutor's slots this student could use, and one-off bookings by date.
-    // Only free / occupied is shared, never who is in a slot.
-    calendar: {
-      slots: slots.filter((x) => slotFits(x.kind, s.lesson_type)).map((x) => ({ id: x.id, weekday: x.weekday, start: x.start, end: x.end, status: x.status })),
-      booked: booked.map((x) => ({ slotId: x.to_slot_id, date: x.d, mine: x.student_id === s.id })),
-    },
-    // Day and time of every slot, so the page can label requests in its own language.
-    times: Object.fromEntries(slots.map((x) => [x.id, { weekday: x.weekday, start: x.start, end: x.end }])),
+    lessons, requests, noticeHours: NOTICE_HOURS, weeksAhead: WEEKS_AHEAD, today, lastDay: dates[dates.length - 1], startDay: startDay || null,
+    // Other confirmed students' lessons, shown only as "occupied" (never who).
+    busy: await occupied(sql, s.id, dates),
   }
 }
 
@@ -91,8 +108,7 @@ async function createRequest(res, sql, s, b) {
   const note = str(b.note, 500)
   let lessonDate = null
   let fromLesson = null
-  let toSlot = null
-  let toDate = null
+  let to = null // { date?, weekday?, start, end }
 
   if (kind === 'reschedule' || kind === 'absence') {
     if (kind === 'reschedule' && s.lesson_type !== 'private') return fail(res, 400, 'Group classes are not moved', 'group')
@@ -103,36 +119,45 @@ async function createRequest(res, sql, s, b) {
     lessonDate = lesson.date
     fromLesson = { weekday: lesson.weekday, start: lesson.start, end: lesson.end }
   }
+  if (kind === 'reschedule') {
+    // Any date and time can be asked for; the tutor accepts, declines or adjusts it.
+    if (!isDate(b.toDate) || b.toDate < st.today || b.toDate > st.lastDay || !okTimes(b.toStart, b.toEnd)) return fail(res, 400, 'Pick a date and time', 'times')
+    if (startsAt(b.toDate, b.toStart) <= Date.now()) return fail(res, 400, 'Pick a time in the future', 'past')
+    if (b.toDate === lessonDate && b.toStart === fromLesson.start) return fail(res, 400, 'That is the same time', 'same')
+    to = { date: b.toDate, weekday: weekdayOf(b.toDate), start: b.toStart, end: b.toEnd }
+  }
   if (kind === 'change') {
     fromLesson = st.weekly.find((w) => w.weekday === Number(b.fromWeekday) && w.start === b.fromStart) || (st.weekly.length === 1 ? st.weekly[0] : null)
     if (st.weekly.length && !fromLesson) return fail(res, 400, 'Pick which lesson to change', 'invalid')
-  }
-  if (kind === 'reschedule' || kind === 'change') {
-    toSlot = st.options.find((o) => o.id === Number(b.toSlotId))
-    if (!toSlot) return fail(res, 409, 'That time is no longer available', 'taken')
-  }
-  if (kind === 'reschedule') {
-    if (!isDate(b.toDate) || !toSlot.dates.includes(b.toDate) || weekdayOf(b.toDate) !== toSlot.weekday) return fail(res, 409, 'That time is no longer available', 'taken')
-    if (startsAt(b.toDate, toSlot.start) <= Date.now()) return fail(res, 400, 'Pick a time in the future', 'invalid')
-    toDate = b.toDate
-  }
-  if (kind === 'change' && st.requests.some((r) => r.kind === 'change' && r.status === 'pending' && sameLesson(r.from_lesson, fromLesson))) {
-    return fail(res, 409, 'You already asked to change your regular time', 'duplicate')
+    const weekday = Number(b.toWeekday)
+    if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6 || !okTimes(b.toStart, b.toEnd)) return fail(res, 400, 'Pick a day and time', 'times')
+    if (fromLesson && weekday === fromLesson.weekday && b.toStart === fromLesson.start && b.toEnd === fromLesson.end) return fail(res, 400, 'That is the same time', 'same')
+    if (st.requests.some((r) => r.kind === 'change' && r.status === 'pending' && sameLesson(r.from_lesson, fromLesson))) {
+      return fail(res, 409, 'You already asked to change this lesson', 'duplicate')
+    }
+    to = { weekday, start: b.toStart, end: b.toEnd }
   }
 
-  const toLabel = toSlot ? (toDate ? `${dateLabel(toDate)} ${slotLabel(toSlot).split(' ').slice(1).join(' ')}` : slotLabel(toSlot)) : null
+  // Link to the timetable slot with the same day and times, if there is one.
+  let slotId = null
+  if (to) {
+    const [slot] = await sql.query(`SELECT id FROM availability_slots WHERE weekday = $1 AND start_time = $2::time AND end_time = $3::time`, [to.weekday, to.start, to.end])
+    slotId = slot?.id ?? null
+  }
+  const toLabel = to ? `${to.date ? dateLabel(to.date) : `Every ${DAY_NAMES[to.weekday]}`} ${span(to.start, to.end)}` : null
   const [row] = await sql`
-    INSERT INTO student_requests (student_id, kind, lesson_date, from_lesson, to_slot_id, to_date, to_label, recording, note)
-    VALUES (${s.id}, ${kind}, ${lessonDate}, ${fromLesson ? JSON.stringify(fromLesson) : null}::jsonb, ${toSlot?.id ?? null}, ${toDate}, ${toLabel}, ${kind === 'absence' && b.recording === true}, ${note || null})
+    INSERT INTO student_requests (student_id, kind, lesson_date, from_lesson, to_slot_id, to_date, to_weekday, to_start, to_end, to_label, recording, note)
+    VALUES (${s.id}, ${kind}, ${lessonDate}, ${fromLesson ? JSON.stringify(fromLesson) : null}::jsonb, ${slotId}, ${to?.date ?? null}, ${to?.weekday ?? null},
+      ${to?.start ?? null}, ${to?.end ?? null}, ${toLabel}, ${kind === 'absence' && b.recording === true}, ${note || null})
     RETURNING id`
 
   const what = {
-    reschedule: `Move the lesson on ${dateLabel(lessonDate)} ${fromLesson?.start || ''} to ${toLabel}`,
-    absence: `Can't make the lesson on ${dateLabel(lessonDate)} ${fromLesson?.start || ''}${b.recording === true ? ' (would like the recording)' : ''}`,
-    change: `Change the regular lesson${fromLesson ? ` on ${weeklyLabel(fromLesson)}` : ''} to ${toLabel}`,
+    reschedule: `Move the lesson on ${dateLabel(lessonDate)} ${span(fromLesson.start, fromLesson.end)} to ${toLabel}`,
+    absence: `Can't make the lesson on ${dateLabel(lessonDate)} ${span(fromLesson.start, fromLesson.end)}${b.recording === true ? ' (would like the recording)' : ''}`,
+    change: `Change the regular lesson${fromLesson ? ` on ${DAY_NAMES[fromLesson.weekday]} ${span(fromLesson.start, fromLesson.end)}` : ''} to ${toLabel}`,
   }[kind]
   await notify(`Kangyan: ${s.name} — ${kind === 'absence' ? 'absence' : kind === 'change' ? 'new regular time' : 'reschedule'} request`,
-    `${s.name} (${s.level || ''}, ${s.lesson_type === 'group' ? 'group' : '1-to-1'})\n${what}${note ? `\nNote: ${note}` : ''}\n\nApprove or reject: https://kangyan.work/admin`)
+    `${s.name} (${s.level || ''}, ${s.lesson_type === 'group' ? 'group' : '1-to-1'})\n${what}${note ? `\nNote: ${note}` : ''}\n\nAccept, decline or change the time: https://kangyan.work/admin`)
   return send(res, 201, { ok: true, id: row.id })
 }
 

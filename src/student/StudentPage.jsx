@@ -57,25 +57,45 @@ function Login({ T, onToken }) {
   )
 }
 
-/** Bottom sheet for one request: absence, reschedule (one lesson) or a new regular time. */
+const toMin = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
+const toT = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
+// Half-hour choices from 8 AM to 10 PM.
+const TIMES = Array.from({ length: 29 }, (_, i) => toT(8 * 60 + i * 30))
+const clock = (t, lang) => (lang === 'zh' ? shortRange(t, toT(toMin(t) + 30), 'zh').split('–')[0] : (() => { const h = Number(t.slice(0, 2)); const m = t.slice(3, 5); return `${h % 12 || 12}${m === '00' ? '' : `:${m}`} ${h < 12 ? 'AM' : 'PM'}` })())
+const overlaps = (a, b) => a.start < b.end && b.start < a.end
+/** Requested time of a request (any time now, or an older slot-based one). */
+const reqTime = (r) => (r.to_start ? { start: r.to_start, end: r.to_end } : null)
+
+/** Bottom sheet for one request: absence, move one lesson, or change a regular lesson. Any time can be asked for. */
 function RequestSheet({ kind, lesson: given, preset, st, T, L, lang, token, onClose, onSent }) {
-  const [slotId, setSlotId] = useState(preset?.slotId ?? null)
-  const [pick, setPick] = useState(null) // which lesson to move, when started from a free slot
+  const [pick, setPick] = useState(null) // which lesson to move, when started from the calendar
   const [from, setFrom] = useState(st.weekly.length === 1 ? st.weekly[0] : null) // which weekly lesson to change
-  const [date, setDate] = useState(preset?.date ?? null)
   const lesson = given || pick
-  // Lessons that can still be moved (12 hours' notice, no request yet).
+  const base = lesson || from || st.weekly[0] || { start: '17:30', end: '19:00' }
+  const len = Math.max(30, toMin(base.end) - toMin(base.start))
+  const startAt = preset?.start || base.start
+  const [date, setDate] = useState(preset?.date || '')
+  const [weekday, setWeekday] = useState(preset?.date ? weekdayOf(preset.date) : (from || st.weekly[0])?.weekday ?? 0)
+  const [start, setStart] = useState(startAt)
+  const [end, setEnd] = useState(toT(Math.min(22 * 60, toMin(startAt) + len)))
   const movable = st.lessons.filter((l) => !l.request && l.hours >= NOTICE_HOURS)
   const [note, setNote] = useState('')
   const [recording, setRecording] = useState(false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const group = st.student.lessonType === 'group'
-  const options = kind === 'reschedule' ? st.options.filter((o) => o.dates.length) : st.options
   const label = (o) => `${L.weekdays[o.weekday]} · ${shortRange(o.start, o.end, lang)}`
-  const ready = kind === 'absence' || (kind === 'change' && slotId && (from || !st.weekly.length)) || (kind === 'reschedule' && slotId && date && lesson)
-  const presetSlot = preset && st.options.find((o) => o.id === preset.slotId)
+  const timesOk = start < end
+  const ready = kind === 'absence'
+    || (kind === 'change' && timesOk && (from || !st.weekly.length))
+    || (kind === 'reschedule' && timesOk && date && lesson)
   const d = lesson && `${dateLabel(lesson.date, lang)} ${shortRange(lesson.start, lesson.end, lang)}`
+  // Warn (but still allow) when the asked-for time overlaps another student's lesson.
+  const clash = kind === 'reschedule'
+    ? date && st.busy.some((x) => x.date === date && overlaps(x, { start, end }))
+    : kind === 'change' && st.busy.some((x) => weekdayOf(x.date) === weekday && overlaps(x, { start, end }))
+
+  const setStartKeep = (v) => { setStart(v); setEnd(toT(Math.min(22 * 60, toMin(v) + (toMin(end) - toMin(start) || len)))) }
 
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose() }
@@ -91,7 +111,10 @@ function RequestSheet({ kind, lesson: given, preset, st, T, L, lang, token, onCl
     setBusy(true)
     setErr('')
     try {
-      await call(token, { action: 'request', kind, lessonDate: lesson?.date, lessonStart: lesson?.start, fromWeekday: from?.weekday, fromStart: from?.start, toSlotId: slotId, toDate: date, recording, note })
+      await call(token, {
+        action: 'request', kind, lessonDate: lesson?.date, lessonStart: lesson?.start, fromWeekday: from?.weekday, fromStart: from?.start,
+        toDate: kind === 'reschedule' ? date : undefined, toWeekday: kind === 'change' ? weekday : undefined, toStart: start, toEnd: end, recording, note,
+      })
       onSent()
     } catch (e2) {
       setErr(T.errors[e2.code] || T.errors.server)
@@ -126,7 +149,6 @@ function RequestSheet({ kind, lesson: given, preset, st, T, L, lang, token, onCl
                 <button type="button" role="radio" aria-checked={from === w} onClick={() => setFrom(w)}>{label(w)}</button>
               </div>
             ))}
-            <span className="stu-k">{T.sheet.newTime}</span>
           </div>
         )}
 
@@ -141,31 +163,35 @@ function RequestSheet({ kind, lesson: given, preset, st, T, L, lang, token, onCl
           </div>
         )}
 
-        {presetSlot && (
-          <div className="stu-opts">
+        {kind !== 'absence' && (
+          <div className="stu-when">
             <span className="stu-k">{T.sheet.newTime}</span>
-            <div className="stu-opt is-on"><button type="button" disabled>{kind === 'reschedule' && date ? `${dateLabel(date, lang)} · ${shortRange(presetSlot.start, presetSlot.end, lang)}` : label(presetSlot)}</button></div>
+            <div className="stu-when__row">
+              {kind === 'reschedule' ? (
+                <label className="stu-field"><span>{T.sheet.date}</span>
+                  <input type="date" value={date} min={st.today} max={st.lastDay} onChange={(e) => setDate(e.target.value)} required />
+                </label>
+              ) : (
+                <label className="stu-field"><span>{T.sheet.day}</span>
+                  <select value={weekday} onChange={(e) => setWeekday(Number(e.target.value))}>
+                    {L.weekdays.map((x, i) => <option key={x} value={i}>{x}</option>)}
+                  </select>
+                </label>
+              )}
+              <label className="stu-field"><span>{T.sheet.from}</span>
+                <select value={start} onChange={(e) => setStartKeep(e.target.value)}>
+                  {TIMES.slice(0, -1).map((t) => <option key={t} value={t}>{clock(t, lang)}</option>)}
+                </select>
+              </label>
+              <label className="stu-field"><span>{T.sheet.to}</span>
+                <select value={end} onChange={(e) => setEnd(e.target.value)}>
+                  {TIMES.filter((t) => t > start && toMin(t) - toMin(start) <= 240).map((t) => <option key={t} value={t}>{clock(t, lang)}</option>)}
+                </select>
+              </label>
+            </div>
+            {clash ? <p className="stu-warn">{T.sheet.clash}</p> : <p className="stu-small">{T.sheet.anyTime}</p>}
           </div>
         )}
-
-        {kind !== 'absence' && !presetSlot && (options.length ? (
-          <div className="stu-opts" role="radiogroup" aria-label={h}>
-            {options.map((o) => (
-              <div key={o.id} className={`stu-opt ${slotId === o.id ? 'is-on' : ''}`}>
-                <button type="button" role="radio" aria-checked={slotId === o.id} onClick={() => { setSlotId(o.id); setDate(kind === 'reschedule' ? o.dates[0] : null) }}>
-                  {label(o)}
-                </button>
-                {kind === 'reschedule' && slotId === o.id && (
-                  <div className="stu-dates" role="radiogroup" aria-label={T.sheet.pickDate}>
-                    {o.dates.map((x) => (
-                      <button type="button" key={x} role="radio" aria-checked={date === x} className={date === x ? 'is-on' : ''} onClick={() => setDate(x)}>{dateLabel(x, lang)}</button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        ) : <p className="stu-note">{T.sheet.noOptions}</p>)}
 
         <label className="stu-field">
           <span>{T.sheet.note}</span>
@@ -181,9 +207,8 @@ function RequestSheet({ kind, lesson: given, preset, st, T, L, lang, token, onCl
   )
 }
 
-/** One week of the student's calendar: their lessons, plus the tutor's slots as free / occupied. */
+/** One week of the student's calendar: their lessons, plus other students' lessons as "occupied". */
 function studentWeek(st, week, T, L, lang) {
-  const now = Date.now()
   const ACTIVE = ['pending', 'approved']
   const short = (d) => (lang === 'zh' ? dateLabel(d, 'zh').split('（')[0] : dateLabel(d, 'en').split(' ').slice(1).join(' '))
   return weekDates(st.today, week, weekdayOf).map((date) => {
@@ -195,22 +220,17 @@ function studentWeek(st, week, T, L, lang) {
       events.push({ key: `m-${date}-${l.start}`, start: l.start, end: l.end, tone, dot: true, title: T.cal.mine, sub: r ? `${shortRange(l.start, l.end, lang)} · ${T.cal.tone[tone]}` : shortRange(l.start, l.end, lang), info: { type: 'mine', lesson: l } })
     }
     for (const r of st.requests.filter((x) => x.kind === 'reschedule' && ACTIVE.includes(x.status) && x.to_date === date)) {
-      const t = st.times[r.to_slot_id]
+      const t = reqTime(r)
       if (t) events.push({ key: `in-${r.id}`, start: t.start, end: t.end, tone: r.status === 'approved' ? 'mine' : 'pending', dot: true, title: T.cal.movedIn, sub: r.status === 'approved' ? shortRange(t.start, t.end, lang) : `${shortRange(t.start, t.end, lang)} · ${T.cal.tone.pending}`, info: { type: 'in', request: r } })
     }
-    for (const sl of st.calendar.slots.filter((x) => x.weekday === wd)) {
-      if (st.weekly.some((w) => w.weekday === wd && w.start === sl.start && w.end === sl.end)) continue // their own regular lesson
-      const b = st.calendar.booked.find((x) => x.slotId === sl.id && x.date === date)
-      if (b?.mine) continue // shown above as a moved-in lesson
-      const started = startsAt(date, sl.start) <= now
-      const free = sl.status === 'open' && !b && !started
-      events.push({ key: `s-${sl.id}-${date}`, start: sl.start, end: sl.end, tone: free ? 'free' : 'busy', faded: started, title: free ? T.cal.free : T.cal.busy, sub: shortRange(sl.start, sl.end, lang), info: { type: free ? 'free' : 'busy', slot: sl, date } })
-    }
+    st.busy.filter((x) => x.date === date).forEach((x, i) => {
+      events.push({ key: `b-${date}-${x.start}-${i}`, start: x.start, end: x.end, tone: 'busy', title: T.cal.busy, sub: shortRange(x.start, x.end, lang), info: { type: 'busy', date, start: x.start, end: x.end } })
+    })
     return { date, head: L.weekdaysShort[wd], sub: short(date), past: date < st.today, events }
   })
 }
 
-/** What shows under the calendar for the tapped entry. */
+/** What shows under the calendar for the tapped entry or empty time. */
 function CalDetail({ ev, st, T, L, lang, onSheet, onCancel }) {
   const { info } = ev
   const priv = st.student.lessonType === 'private'
@@ -219,14 +239,16 @@ function CalDetail({ ev, st, T, L, lang, onSheet, onCancel }) {
     const l = info.lesson
     const r = l.request
     const late = l.hours < st.noticeHours
+    const t = r && reqTime(r)
     return (
       <div className={`stu-detail stu-detail--${ev.tone}`}>
         <span className="stu-k">{T.cal.mine}</span>
         <b>{when(l.date, l.start, l.end)}</b>
         {r ? (
           <>
-            <p>{r.kind === 'absence' ? T.status.absent[r.status] : T.status.moved[r.status](r.to_date ? when(r.to_date, st.times[r.to_slot_id]?.start || '', st.times[r.to_slot_id]?.end || '') : r.to_label)}</p>
+            <p>{r.kind === 'absence' ? T.status.absent[r.status] : T.status.moved[r.status](t && r.to_date ? when(r.to_date, t.start, t.end) : r.to_label)}</p>
             {r.status === 'pending' && <button type="button" className="stu-link" onClick={() => onCancel(r.id)}>{T.withdraw}</button>}
+            {r.status === 'approved' && <p className="stu-small">{T.cal.askTutor}</p>}
           </>
         ) : (
           <>
@@ -242,36 +264,31 @@ function CalDetail({ ev, st, T, L, lang, onSheet, onCancel }) {
   }
   if (info.type === 'in') {
     const r = info.request
-    const t = st.times[r.to_slot_id]
+    const t = reqTime(r)
     return (
       <div className={`stu-detail stu-detail--${ev.tone}`}>
         <span className="stu-k">{T.cal.movedIn}</span>
         <b>{t ? when(r.to_date, t.start, t.end) : r.to_label}</b>
         <p>{T.cal.movedFrom(dateLabel(r.lesson_date, lang))} · {T.reqStatus[r.status]}</p>
         {r.status === 'pending' && <button type="button" className="stu-link" onClick={() => onCancel(r.id)}>{T.withdraw}</button>}
+        {r.status === 'approved' && <p className="stu-small">{T.cal.askTutor}</p>}
       </div>
     )
   }
-  if (info.type === 'free') {
-    const { slot, date } = info
-    const canMove = priv && st.options.some((o) => o.id === slot.id && o.dates.includes(date))
-    return (
-      <div className="stu-detail stu-detail--free">
-        <span className="stu-k">{T.cal.free}</span>
-        <b>{when(date, slot.start, slot.end)}</b>
-        <p>{T.cal.freeP}</p>
-        <div className="stu-detail__acts">
-          {canMove && <button type="button" className="act act--main" onClick={() => onSheet({ kind: 'reschedule', preset: { slotId: slot.id, date } })}>{T.cal.moveHere}</button>}
-          <button type="button" className="act" onClick={() => onSheet({ kind: 'change', preset: { slotId: slot.id } })}>{T.cal.makeRegular(L.weekdays[slot.weekday])}</button>
-        </div>
-      </div>
-    )
-  }
+  // An occupied time, or an empty time they tapped: they can still ask for it.
+  const { date, start, end } = info
+  const past = date < st.today
   return (
-    <div className="stu-detail stu-detail--busy">
-      <span className="stu-k">{T.cal.busy}</span>
-      <b>{when(info.date, info.slot.start, info.slot.end)}</b>
-      <p>{ev.faded ? T.cal.pastP : T.cal.busyP}</p>
+    <div className={`stu-detail stu-detail--${info.type === 'busy' ? 'busy' : 'free'}`}>
+      <span className="stu-k">{info.type === 'busy' ? T.cal.busy : T.cal.askH}</span>
+      <b>{end ? when(date, start, end) : `${dateLabel(date, lang)} · ${clock(start, lang)}`}</b>
+      <p>{past ? T.cal.pastP : info.type === 'busy' ? T.cal.busyP : T.cal.askP}</p>
+      {!past && (
+        <div className="stu-detail__acts">
+          {priv && <button type="button" className="act act--main" onClick={() => onSheet({ kind: 'reschedule', preset: { date, start } })}>{T.cal.moveHere}</button>}
+          <button type="button" className="act" onClick={() => onSheet({ kind: 'change', preset: { date, start } })}>{T.cal.makeRegular(L.weekdays[weekdayOf(date)])}</button>
+        </div>
+      )}
     </div>
   )
 }
@@ -374,10 +391,11 @@ export default function StudentPage() {
     }
   }
 
-  const timeOf = (slotId, date) => {
-    const x = st?.times[slotId]
-    if (!x) return ''
-    return `${date ? dateLabel(date, lang) : L.weekdays[x.weekday]} ${shortRange(x.start, x.end, lang)}`
+  // Requested time in the page's language: a date for one lesson, a weekday for a regular one.
+  const timeOf = (r) => {
+    const t = reqTime(r)
+    if (!t) return r.to_label || ''
+    return `${r.to_date ? dateLabel(r.to_date, lang) : L.weekdays[r.to_weekday ?? 0]} ${shortRange(t.start, t.end, lang)}`
   }
 
   const header = (
@@ -422,19 +440,22 @@ export default function StudentPage() {
               <div className="stu-cal__head">
                 <h2>{T.cal.title}</h2>
                 <ul className="stu-legend">
-                  {['mine', 'pending', 'free', 'busy'].map((k) => <li key={k}><i className={`wc__dot wc__dot--${k}`} />{T.cal.legend[k]}</li>)}
+                  {['mine', 'pending', 'busy'].map((k) => <li key={k}><i className={`wc__dot wc__dot--${k}`} />{T.cal.legend[k]}</li>)}
                 </ul>
               </div>
               {(() => {
                 const days = studentWeek(st, week, T, L, lang)
-                const picked = days.flatMap((d) => d.events).find((e) => e.key === sel)
+                const picked = sel?.startsWith('ask:')
+                  ? { key: sel, tone: 'free', info: { type: 'ask', date: sel.split(':')[1], start: sel.split(':').slice(2).join(':') || st.weekly[0]?.start || '17:30' } }
+                  : days.flatMap((d) => d.events).find((e) => e.key === sel)
                 return (
                   <>
                     <WeekCalendar
                       days={days} week={week} weeks={st.weeksAhead} onWeek={(n) => { setWeek(n); setSel(null) }}
                       selected={sel} onSelect={(e) => setSel(e.key === sel ? null : e.key)} today={st.today}
+                      onEmpty={(d, t) => setSel(`ask:${d.date}:${t || ''}`)}
                       title={`${days[0].sub} – ${days[6].sub}`}
-                      labels={{ prev: T.cal.prev, next: T.cal.next, today: T.cal.thisWeek, empty: T.cal.empty, hour: (h) => (lang === 'zh' ? `${h}点` : `${h % 12 || 12}${h < 12 ? 'am' : 'pm'}`) }}
+                      labels={{ prev: T.cal.prev, next: T.cal.next, today: T.cal.thisWeek, empty: T.cal.empty, ask: T.cal.askDay, hour: (h) => (lang === 'zh' ? `${h}点` : `${h % 12 || 12}${h < 12 ? 'am' : 'pm'}`) }}
                     />
                     {picked ? <CalDetail ev={picked} st={st} T={T} L={L} lang={lang} onSheet={setSheet} onCancel={cancel} /> : <p className="stu-muted stu-cal__hint">{st.weekly.length ? T.cal.hint : T.noSlot}</p>}
                   </>
@@ -463,7 +484,7 @@ export default function StudentPage() {
                       <p>
                         {r.lesson_date && T.lessonOn(`${dateLabel(r.lesson_date, lang)}${r.from_lesson ? ` ${shortRange(r.from_lesson.start, r.from_lesson.end, lang)}` : ''}`)}
                         {!r.lesson_date && r.from_lesson && `${L.weekdays[r.from_lesson.weekday]} ${shortRange(r.from_lesson.start, r.from_lesson.end, lang)}`}
-                        {r.to_slot_id && <> {T.to(timeOf(r.to_slot_id, r.to_date) || r.to_label)}</>}
+                        {(r.to_start || r.to_label) && <> {T.to(timeOf(r))}</>}
                         {r.recording && <> · {T.recordingAsked}</>}
                       </p>
                       {r.note && <p className="stu-muted">“{r.note}”</p>}

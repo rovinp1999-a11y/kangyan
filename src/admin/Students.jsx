@@ -19,13 +19,6 @@ const toM = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
 const TIMES = Array.from({ length: 31 }, (_, i) => toT(7 * 60 + i * 30))
 const NEW_LESSON = { weekday: 0, start: '17:30', end: '19:00' }
 
-/** Short day + time of a slot in the student's language, for WhatsApp messages. */
-function timeText(slot, date, lang) {
-  if (!slot) return ''
-  const L = STRINGS[lang].labels
-  return `${date ? dateLabel(date, lang) : (lang === 'zh' ? `每${L.weekdays[slot.weekday]}` : `every ${L.weekdays[slot.weekday]}`)} ${shortRange(slot.start, slot.end, lang)}`
-}
-
 export function loginMessage(s, pin) {
   const phone = localPhone(s.phone)
   if (s.lang === 'zh') {
@@ -43,27 +36,72 @@ export function pageMessage(s) {
   return `Hi ${first(s.name)}! A reminder that your Kangyan student page is here:\n\n${SITE}\nLog in with your WhatsApp number ${phone} and your 6-digit PIN.\n\nForgot your PIN? Reply and I'll send you a new one.`
 }
 
-function decisionMessage(r, s, slots, approved) {
+/** The time a request asks for, in a language: 'Tue 3 Nov 7–8:30 PM' / 'every Tuesday 7–8:30 PM'. */
+export function askedTime(r, lang = 'en') {
+  if (!r.to_start) return r.to_label || ''
+  const L = STRINGS[lang].labels
+  const day = r.to_date ? dateLabel(r.to_date, lang) : lang === 'zh' ? `每${L.weekdays[r.to_weekday ?? 0]}` : `every ${L.weekdays[r.to_weekday ?? 0]}`
+  return `${day} ${shortRange(r.to_start, r.to_end, lang)}`
+}
+
+function decisionMessage(r, s, approved) {
   const zh = s.lang === 'zh'
   const lang = zh ? 'zh' : 'en'
-  const to = slots.find((x) => x.id === r.to_slot_id)
   const lesson = r.lesson_date ? dateLabel(r.lesson_date, lang) : ''
   const what = {
-    reschedule: zh ? `${lesson} 的课改到 ${timeText(to, r.to_date, lang)}` : `moving your lesson on ${lesson} to ${timeText(to, r.to_date, lang)}`,
+    reschedule: zh ? `${lesson} 的课改到 ${askedTime(r, lang)}` : `moving your lesson on ${lesson} to ${askedTime(r, lang)}`,
     absence: zh ? `${lesson} 请假${r.recording ? '（会发录影给你）' : ''}` : `your absence on ${lesson}${r.recording ? ' (I will send you the recording)' : ''}`,
-    change: zh ? `固定上课时间改到${timeText(to, null, lang)}` : `changing your regular lesson to ${timeText(to, null, lang)}`,
+    change: zh ? `固定上课时间改到${askedTime(r, lang)}` : `changing your regular lesson to ${askedTime(r, lang)}`,
   }[r.kind]
   const reply = r.reply ? `\n\n${r.reply}` : ''
   if (zh) return `${s.name}你好！${approved ? '已经确认' : '抱歉，这次没办法安排'}：${what}。${reply}\n\n${SITE}`
   return `Hi ${first(s.name)}! ${approved ? 'Confirmed' : "Sorry, I can't do this one"}: ${what}.${reply}\n\n${SITE}`
 }
 
-function requestText(r, s, slots) {
-  const to = slots.find((x) => x.id === r.to_slot_id)
+export function requestText(r) {
   const at = r.from_lesson ? ` ${shortRange(r.from_lesson.start, r.from_lesson.end, 'en')}` : ''
-  if (r.kind === 'reschedule') return `${dateLabel(r.lesson_date)}${at} → ${to ? `${dateLabel(r.to_date)} ${shortRange(to.start, to.end, 'en')}` : r.to_label}`
+  if (r.kind === 'reschedule') return `${dateLabel(r.lesson_date)}${at} → ${askedTime(r)}`
   if (r.kind === 'absence') return `${dateLabel(r.lesson_date)}${at}${r.recording ? ' · wants the recording' : ''}`
-  return `${r.from_lesson ? `${WEEKDAYS_SHORT[r.from_lesson.weekday]}${at}` : 'New weekly lesson'} → ${to ? slotLabel(to) : r.to_label}`
+  return `${r.from_lesson ? `${WEEKDAYS_SHORT[r.from_lesson.weekday]}${at}` : 'New weekly lesson'} → ${askedTime(r)}`
+}
+
+/**
+ * Accept / decline a request, or change the time first (after agreeing it on WhatsApp).
+ * Used on the Students tab and in the calendar details.
+ */
+export function Decide({ r, onDecide, withReply = true }) {
+  const [reply, setReply] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [t, setT] = useState({ date: r.to_date || '', weekday: r.to_weekday ?? 0, start: r.to_start || '17:30', end: r.to_end || '19:00' })
+  const go = async (status, time) => { setBusy(true); await onDecide(r, status, reply, time); setBusy(false) }
+  const timesOk = t.start < t.end && (r.kind !== 'reschedule' || t.date)
+  return (
+    <div className="decide">
+      {editing && (
+        <div className="decide__time">
+          {r.kind === 'reschedule'
+            ? <input type="date" value={t.date} onChange={(e) => setT({ ...t, date: e.target.value })} aria-label="Date" />
+            : <select value={t.weekday} onChange={(e) => setT({ ...t, weekday: Number(e.target.value) })} aria-label="Day">{WEEKDAYS.map((d, i) => <option key={d} value={i}>{d}</option>)}</select>}
+          <select value={t.start} onChange={(e) => { const len = toM(t.end) - toM(t.start); setT({ ...t, start: e.target.value, end: toT(Math.min(toM('22:00'), toM(e.target.value) + Math.max(30, len))) }) }} aria-label="Start">
+            {TIMES.slice(0, -1).map((x) => <option key={x} value={x}>{formatTime(x)}</option>)}
+          </select>
+          <span>to</span>
+          <select value={t.end} onChange={(e) => setT({ ...t, end: e.target.value })} aria-label="End">
+            {TIMES.filter((x) => x > t.start).map((x) => <option key={x} value={x}>{formatTime(x)}</option>)}
+          </select>
+        </div>
+      )}
+      {withReply && <input className="sreq__reply" value={reply} onChange={(e) => setReply(e.target.value)} placeholder="Reply to the student (optional)" maxLength={500} aria-label="Reply to the student" />}
+      <div className="sreq__acts">
+        <button type="button" className="act" disabled={busy} onClick={() => go('rejected')}>Decline</button>
+        {r.kind !== 'absence' && !editing && <button type="button" className="act" disabled={busy} onClick={() => setEditing(true)}><Icon name="edit" />Change time</button>}
+        {editing
+          ? <button type="button" className="btn btn--accent btn--sm" disabled={busy || !timesOk} onClick={() => go('approved', t)}>Accept new time</button>
+          : <button type="button" className="btn btn--accent btn--sm" disabled={busy} onClick={() => go('approved')}>{r.kind === 'absence' ? 'Noted' : 'Accept'}</button>}
+      </div>
+    </div>
+  )
 }
 
 /** Login details shown once after creating a student or giving a new PIN. */
@@ -196,10 +234,7 @@ function StudentForm({ initial, slots, onSave, onCancel, busy }) {
   )
 }
 
-function RequestCard({ r, s, slots, onDecide }) {
-  const [reply, setReply] = useState('')
-  const [busy, setBusy] = useState(false)
-  const decide = async (status) => { setBusy(true); await onDecide(r, status, reply); setBusy(false) }
+function RequestCard({ r, s, onDecide }) {
   return (
     <article className={`sreq sreq--${r.kind}`}>
       <header>
@@ -207,13 +242,9 @@ function RequestCard({ r, s, slots, onDecide }) {
         <span className="sreq__kind">{KIND_LABEL[r.kind]}</span>
         <time dateTime={r.created_at} title={fullDate(r.created_at)}>{timeAgo(r.created_at)}</time>
       </header>
-      <p className="sreq__what">{requestText(r, s, slots)}</p>
+      <p className="sreq__what">{requestText(r)}</p>
       {r.note && <p className="sreq__note">“{r.note}”</p>}
-      <input className="sreq__reply" value={reply} onChange={(e) => setReply(e.target.value)} placeholder="Reply to the student (optional)" maxLength={500} aria-label={`Reply to ${s?.name}`} />
-      <div className="sreq__acts">
-        <button type="button" className="act" disabled={busy} onClick={() => decide('rejected')}>Reject</button>
-        <button type="button" className="btn btn--accent btn--sm" disabled={busy} onClick={() => decide('approved')}>{r.kind === 'absence' ? 'Noted' : 'Approve'}</button>
-      </div>
+      <Decide r={r} onDecide={onDecide} />
     </article>
   )
 }
@@ -238,9 +269,14 @@ export function StudentsTab({ students, setStudents, requests, setRequests, slot
     try {
       const body = { ...f, lessons: f.lessons.map(({ weekday, start, end }) => ({ weekday, start, end })), startDate: null }
       if (f.id) {
-        const { student } = await api('/api/admin/students', { method: 'POST', body: { action: 'update', ...body } })
+        const { student, cleared } = await api('/api/admin/students', { method: 'POST', body: { action: 'update', ...body } })
         setStudents((list) => list.map((x) => (x.id === student.id ? student : x)))
-        notify('Student saved')
+        if (cleared) {
+          // Some one-week changes belonged to their old weekly time and were cleared; reload them.
+          const fresh = await api('/api/admin/students')
+          setRequests(fresh.requests)
+        }
+        notify(cleared ? `Student saved · ${cleared} one-week change${cleared === 1 ? '' : 's'} for the old time cleared` : 'Student saved')
       } else {
         const { student, pin: p } = await api('/api/admin/students', { method: 'POST', body: { action: 'create', ...body } })
         setStudents((list) => [...list, student].sort((a, b) => a.name.localeCompare(b.name)))
@@ -294,14 +330,14 @@ export function StudentsTab({ students, setStudents, requests, setRequests, slot
       refreshSlots()
     } catch (e) { fail(e) }
   }
-  const decide = async (r, status, reply) => {
+  const decide = async (r, status, reply, time) => {
     try {
-      const { request, student } = await api('/api/admin/students', { method: 'POST', body: { action: 'decide', id: r.id, status, reply } })
+      const { request, student } = await api('/api/admin/students', { method: 'POST', body: { action: 'decide', id: r.id, status, reply, time } })
       setRequests((list) => list.map((x) => (x.id === request.id ? request : x)))
       if (student) { setStudents((list) => list.map((x) => (x.id === student.id ? student : x))); refreshSlots() }
       const s = byId.get(r.student_id)
       if (s) setTold({ r: request, s: student || s, approved: status === 'approved' })
-      notify(status === 'approved' ? 'Approved' : 'Rejected')
+      notify(status === 'approved' ? (time ? 'Accepted at the new time' : 'Accepted') : 'Declined')
     } catch (e) { fail(e) }
   }
 
@@ -314,12 +350,12 @@ export function StudentsTab({ students, setStudents, requests, setRequests, slot
         {told && (
           <div className="sreq-told">
             <span>Let {first(told.s.name)} know:</span>
-            <a className="act act--wa" href={waLink(told.s.phone, decisionMessage(told.r, told.s, slots, told.approved))} target="_blank" rel="noopener noreferrer"><Icon name="chat" />WhatsApp {told.approved ? 'confirmation' : 'reply'}</a>
+            <a className="act act--wa" href={waLink(told.s.phone, decisionMessage(told.r, told.s, told.approved))} target="_blank" rel="noopener noreferrer"><Icon name="chat" />WhatsApp {told.approved ? 'confirmation' : 'reply'}</a>
             <button type="button" className="icon-btn" onClick={() => setTold(null)} aria-label="Dismiss"><Icon name="x" /></button>
           </div>
         )}
         {pending.length ? (
-          <div className="sreqs">{pending.map((r) => <RequestCard key={r.id} r={r} s={byId.get(r.student_id)} slots={slots} onDecide={decide} />)}</div>
+          <div className="sreqs">{pending.map((r) => <RequestCard key={r.id} r={r} s={byId.get(r.student_id)} onDecide={decide} />)}</div>
         ) : <p className="cempty">No requests waiting. When a student asks to move a lesson, reports an absence or wants a new regular time, it appears here.</p>}
       </section>
 
@@ -379,7 +415,7 @@ export function StudentsTab({ students, setStudents, requests, setRequests, slot
                 <li key={r.id}>
                   <span className={`shist__st shist__st--${r.status}`}>{STATUS[r.status]}</span>
                   <b>{s?.name || '—'}</b>
-                  <span>{KIND_LABEL[r.kind]}: {requestText(r, s, slots)}</span>
+                  <span>{KIND_LABEL[r.kind]}: {requestText(r)}</span>
                   {r.reply && <small>Reply: {r.reply}</small>}
                 </li>
               )

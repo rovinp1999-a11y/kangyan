@@ -3,6 +3,7 @@ import { WEEKDAYS_SHORT, formatRange, slotLabel } from '../../shared/constants.j
 import { Icon, STATUS_META, api, getToken, setToken, sortSlots } from './lib.jsx'
 import { EnquiriesTab, EnquiryCard, EnquiryForm, Drawer } from './Enquiries.jsx'
 import { SlotsTab } from './Timetable.jsx'
+import { AdminCalendar } from './Calendar.jsx'
 import { Overview } from './Overview.jsx'
 import { Schedule } from './Schedule.jsx'
 import { StudentsTab, formFromStudent } from './Students.jsx'
@@ -11,8 +12,9 @@ const TABS = [
   { key: 'overview', label: 'Overview', icon: 'chart' },
   { key: 'enquiries', label: 'Enquiries', icon: 'inbox' },
   { key: 'students', label: 'Students', icon: 'users' },
+  { key: 'calendar', label: 'My calendar', short: 'Calendar', icon: 'calendar' },
   { key: 'schedule', label: 'Schedule', icon: 'grid' },
-  { key: 'slots', label: 'Timetable', icon: 'calendar' },
+  { key: 'slots', label: 'Enquiry slots', short: 'Slots', icon: 'clock' },
 ]
 const TAB_KEY = 'kangyan-admin-tab'
 const savedTab = () => { try { const t = sessionStorage.getItem(TAB_KEY); return TABS.some((x) => x.key === t) ? t : 'overview' } catch { return 'overview' } }
@@ -240,7 +242,8 @@ export default function AdminPage() {
     enquiries: ['Enquiries', `${newCount} new · ${weekCount} in the last 7 days · ${enquiries?.length ?? 0} total`],
     students: ['Students', `${students?.filter((s) => s.active).length ?? 0} active · ${pendingCount} request${pendingCount === 1 ? '' : 's'} waiting · login page: kangyan.work/student`],
     schedule: ['Schedule', 'Who picked which time, like a spreadsheet. Tap a name to open the enquiry.'],
-    slots: ['Timetable', `${openSlots} open slot${openSlots === 1 ? '' : 's'} across the week · ${students?.filter((s) => s.active).length ?? 0} active students`],
+    calendar: ['My calendar', `Your classes with confirmed students · ${students?.filter((s) => s.active).length ?? 0} active students`],
+    slots: ['Enquiry slots', `${openSlots} open slot${openSlots === 1 ? '' : 's'} · new enquiries can only pick slots you set to Open`],
   }
 
   return (
@@ -254,7 +257,7 @@ export default function AdminPage() {
           <nav className="aside__nav" aria-label="Admin sections">
             {TABS.map((t) => (
               <button key={t.key} type="button" className={tab === t.key ? 'is-on' : ''} aria-current={tab === t.key ? 'page' : undefined} onClick={() => go(t.key)}>
-                <Icon name={t.icon} /><span>{t.label}</span>
+                <Icon name={t.icon} /><span className="tab-full">{t.label}</span><span className="tab-short">{t.short || t.label}</span>
                 {t.key === 'enquiries' && newCount > 0 && <span className="badge" aria-label={`${newCount} new`}>{newCount}</span>}
                 {t.key === 'students' && pendingCount > 0 && <span className="badge" aria-label={`${pendingCount} requests waiting`}>{pendingCount}</span>}
               </button>
@@ -297,7 +300,8 @@ export default function AdminPage() {
             {tab === 'enquiries' && <EnquiriesTab rows={rows} actions={actions} onOpen={setOpenId} onMakeStudent={makeStudent} onEdit={editEnquiry} studentOf={studentOf} onViewStudent={editStudent} notify={notify} filter={enqFilter} setFilter={setEnqFilter} />}
             {tab === 'students' && <StudentsTab students={students} setStudents={setStudents} requests={requests} setRequests={setRequests} slots={slots} refreshSlots={refreshSlots} prefill={prefill} clearPrefill={clearPrefill} onCreated={(s) => s.enquiry_id && setEnquiries((rs) => rs.map((r) => (r.id === s.enquiry_id ? { ...r, status: 'confirmed' } : r)))} notify={notify} onAuthError={logout} />}
             {tab === 'schedule' && <Schedule rows={rows} slots={slots} onOpen={setOpenId} notify={notify} />}
-            {tab === 'slots' && <SlotsTab slots={slots} setSlots={setSlots} enquiries={rows} students={students} requests={requests} setStudents={setStudents} setRequests={setRequests} refreshSlots={refreshSlots} onEditStudent={editStudent} onAuthError={logout} notify={notify} onOpen={setOpenId} />}
+            {tab === 'calendar' && <AdminCalendar slots={slots} setSlots={setSlots} students={students} setStudents={setStudents} requests={requests} setRequests={setRequests} refreshSlots={refreshSlots} notify={notify} onAuthError={logout} onEditStudent={editStudent} />}
+            {tab === 'slots' && <SlotsTab slots={slots} setSlots={setSlots} enquiries={rows} students={students} onAuthError={logout} notify={notify} onOpen={setOpenId} />}
           </>
         )}
       </main>

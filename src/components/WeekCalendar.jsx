@@ -9,6 +9,7 @@ import { addDays } from '../../shared/lessons.js'
 //   days: [{ date: 'YYYY-MM-DD', head: 'Mon', sub: '2 Nov', past, events: [
 //     { key, start: 'HH:MM', end: 'HH:MM', tone, title, sub?, badge?, faded? } ] }]
 //   tone → colour class: mine | moved | off | pending | free | busy | open | taken | lesson | group
+//   onEmpty(day, 'HH:MM' | null), optional: tapping an empty part of a day (rounded to the half hour)
 
 const ROW = 44 // px per hour on the time grid
 const toMin = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
@@ -37,7 +38,7 @@ function lanes(events) {
   return out.map((e) => ({ ...e, of: Math.max(...out.filter((o) => o.start < e.end && e.start < o.end).map((o) => o.lane)) + 1 }))
 }
 
-export default function WeekCalendar({ days, week, weeks, onWeek, selected, onSelect, today, labels, from = 8, to = 22, title }) {
+export default function WeekCalendar({ days, week, weeks, onWeek, selected, onSelect, onEmpty, today, labels, from = 8, to = 22, title }) {
   const narrow = useNarrow()
   const [day, setDay] = useState(() => Math.max(0, days.findIndex((d) => d.date === today)))
   useEffect(() => { setDay(week === 0 ? Math.max(0, days.findIndex((d) => d.date === today)) : 0) }, [week]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -89,6 +90,7 @@ export default function WeekCalendar({ days, week, weeks, onWeek, selected, onSe
         </div>
         <div className="wc__list">
           {list.length ? list.map((e) => chip(e, d)) : <p className="wc__empty">{labels.empty}</p>}
+          {onEmpty && !d.past && <button type="button" className="wc__ask" onClick={() => onEmpty(d, null)}>{labels.ask}</button>}
         </div>
       </div>
     )
@@ -106,7 +108,17 @@ export default function WeekCalendar({ days, week, weeks, onWeek, selected, onSe
           {hours.map((h) => <span key={h} style={{ height: ROW }}>{labels.hour(h)}</span>)}
         </div>
         {days.map((d) => (
-          <div key={d.date} className={`wc__col ${d.past ? 'is-past' : ''} ${d.date === today ? 'is-today' : ''}`} style={{ height: hours.length * ROW }}>
+          <div
+            key={d.date}
+            className={`wc__col ${d.past ? 'is-past' : ''} ${d.date === today ? 'is-today' : ''} ${onEmpty && !d.past ? 'is-pickable' : ''}`}
+            style={{ height: hours.length * ROW }}
+            onClick={onEmpty && !d.past ? (e) => {
+              if (e.target !== e.currentTarget) return
+              const m = lo * 60 + Math.floor(((e.clientY - e.currentTarget.getBoundingClientRect().top) / ROW) * 2) * 30
+              const t = Math.min(Math.max(m, lo * 60), hi * 60 - 60)
+              onEmpty(d, `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`)
+            } : undefined}
+          >
             {lanes(d.events).map((e) => {
               const top = ((toMin(e.start) - lo * 60) / 60) * ROW
               const h = Math.max(22, ((toMin(e.end) - toMin(e.start)) / 60) * ROW - 2)

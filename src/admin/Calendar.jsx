@@ -1,19 +1,20 @@
-// Week calendar of everything that is booked: timetable slots, each student's weekly
-// lessons, absences, moved lessons and requests still waiting. Tap an entry for details
-// and quick actions (WhatsApp, edit student, approve / reject, open / close the slot).
+// "My calendar": the tutor's real classes with confirmed students, week by week — weekly
+// lessons, one-week moves and cancellations, and requests still waiting. Enquiry slots
+// (open / taken) live on their own tab. Tap an entry for details and quick actions.
 import { useMemo, useState } from 'react'
-import { WEEKDAYS, SLOT_KIND_LABEL } from '../../shared/constants.js'
+import { WEEKDAYS, SLOT_KIND_LABEL, formatTime } from '../../shared/constants.js'
 import { dateLabel, todayMY, weekdayOf } from '../../shared/lessons.js'
 import { shortRange } from '../i18n.jsx'
 import WeekCalendar, { weekDates } from '../components/WeekCalendar.jsx'
 import { Icon, KIND_SHORT, api, waLink } from './lib.jsx'
+import { Decide, askedTime } from './Students.jsx'
 
 const WEEKS = 8
 const ACTIVE = ['pending', 'approved']
 const range = (a, b) => shortRange(a, b, 'en')
 
 /** Who is in one lesson (a slot or a custom weekly time) on one date, and in what state. */
-function peopleFor(date, match, students, requests, slotId) {
+function peopleFor(date, match, students, requests) {
   const out = []
   for (const s of students) {
     if (!s.active || (s.start_date && date < s.start_date)) continue
@@ -23,13 +24,15 @@ function peopleFor(date, match, students, requests, slotId) {
       out.push({ s, l, r, state })
     }
   }
-  if (slotId) {
-    for (const r of requests.filter((x) => x.kind === 'reschedule' && ACTIVE.includes(x.status) && x.to_slot_id === slotId && x.to_date === date)) {
-      const s = students.find((x) => x.id === r.student_id)
-      if (s) out.push({ s, r, state: r.status === 'approved' ? 'movedIn' : 'moveInAsk' })
-    }
-  }
   return out
+}
+
+/** Lessons moved onto this date (to any time), each shown at its new time. */
+function movedIn(date, students, requests) {
+  return requests
+    .filter((x) => x.kind === 'reschedule' && ACTIVE.includes(x.status) && x.to_date === date && x.to_start)
+    .map((r) => ({ s: students.find((x) => x.id === r.student_id), r, state: r.status === 'approved' ? 'movedIn' : 'moveInAsk' }))
+    .filter((p) => p.s)
 }
 
 const HERE = ['regular', 'movedIn', 'absentAsk', 'moveOutAsk', 'moveInAsk']
@@ -47,17 +50,48 @@ function weekDays(week, slots, students, requests) {
       const title = here.length ? here.map((p) => p.s.name.split(/\s+/)[0]).join(', ') : people.length ? 'Absent / moved' : slot?.status === 'taken' ? 'Taken' : 'Open'
       events.push({ key, start, end, tone, title, sub: range(start, end), badge: pend || undefined, dot: here.length > 0 || pend > 0, info: { date, start, end, people, slot } })
     }
+    const ins = movedIn(date, students, requests)
+    const placed = new Set()
     for (const sl of slots.filter((x) => x.weekday === wd)) {
-      make(`s-${sl.id}-${date}`, sl.start, sl.end, peopleFor(date, (l) => l.slot_id === sl.id, students, requests, sl.id), sl)
+      const here = ins.filter((p) => p.r.to_start === sl.start && p.r.to_end === sl.end)
+      here.forEach((p) => placed.add(p.r.id))
+      make(`s-${sl.id}-${date}`, sl.start, sl.end, [...peopleFor(date, (l) => l.slot_id === sl.id, students, requests), ...here], sl)
     }
     // Weekly lessons at times that aren't timetable slots (e.g. Saturday 10–12).
     const custom = new Map()
     for (const s of students) for (const l of s.lessons || []) if (!l.slot_id && l.weekday === wd) custom.set(`${l.start}-${l.end}`, l)
     for (const [k, l] of custom) {
-      make(`c-${k}-${date}`, l.start, l.end, peopleFor(date, (x) => !x.slot_id && x.weekday === wd && x.start === l.start && x.end === l.end, students, requests), null)
+      const here = ins.filter((p) => !placed.has(p.r.id) && p.r.to_start === l.start && p.r.to_end === l.end)
+      here.forEach((p) => placed.add(p.r.id))
+      make(`c-${k}-${date}`, l.start, l.end, [...peopleFor(date, (x) => !x.slot_id && x.weekday === wd && x.start === l.start && x.end === l.end, students, requests), ...here], null)
     }
-    return { date, head: WEEKDAYS[wd].slice(0, 3), sub: dateLabel(date).split(' ').slice(1).join(' '), past: date < today, events: events.filter((e) => e.info.slot || e.info.people.length) }
+    // Moves to a time that is neither a slot nor anyone's weekly lesson.
+    for (const p of ins.filter((x) => !placed.has(x.r.id))) make(`m-${p.r.id}`, p.r.to_start, p.r.to_end, [p], null)
+    return { date, head: WEEKDAYS[wd].slice(0, 3), sub: dateLabel(date).split(' ').slice(1).join(' '), past: date < today, events: events.filter((e) => e.info.people.length) }
   })
+}
+
+const toM = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
+const toT = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
+const TIMES = Array.from({ length: 31 }, (_, i) => toT(7 * 60 + i * 30))
+
+/** Pick a date and times for moving one lesson. */
+function TimePick({ init, onSave, onCancel, busy }) {
+  const [t, setT] = useState(init)
+  return (
+    <div className="decide__time acal-pick">
+      <input type="date" value={t.date} onChange={(e) => setT({ ...t, date: e.target.value })} aria-label="Date" />
+      <select value={t.start} onChange={(e) => { const len = Math.max(30, toM(t.end) - toM(t.start)); setT({ ...t, start: e.target.value, end: toT(Math.min(toM('22:00'), toM(e.target.value) + len)) }) }} aria-label="Start">
+        {TIMES.slice(0, -1).map((x) => <option key={x} value={x}>{formatTime(x)}</option>)}
+      </select>
+      <span>to</span>
+      <select value={t.end} onChange={(e) => setT({ ...t, end: e.target.value })} aria-label="End">
+        {TIMES.filter((x) => x > t.start).map((x) => <option key={x} value={x}>{formatTime(x)}</option>)}
+      </select>
+      <button type="button" className="btn btn--accent btn--sm" disabled={busy || !t.date || t.start >= t.end} onClick={() => onSave(t)}>Save</button>
+      <button type="button" className="act" onClick={onCancel}>Cancel</button>
+    </div>
+  )
 }
 
 const STATE = {
@@ -70,24 +104,19 @@ const STATE = {
   moveInAsk: (p) => `Asks to move here from ${dateLabel(p.r.lesson_date)}`,
 }
 
-function Detail({ ev, slots, onDecide, onSlot, onEdit }) {
+function Detail({ ev, slots, onDecide, onEdit, onMove, onCancelLesson, onUndo }) {
+  const [picking, setPicking] = useState(null) // key of the person whose lesson is being moved
+  const [busy, setBusy] = useState(false)
+  const act = async (fn) => { setBusy(true); await fn(); setBusy(false); setPicking(null) }
   const { date, start, end, people, slot } = ev.info
-  const target = (r) => {
-    const t = slots.find((x) => x.id === r.to_slot_id)
-    return t ? `${dateLabel(r.to_date)} ${range(t.start, t.end)}` : r.to_label
-  }
+  const target = (r) => askedTime(r)
   return (
     <div className="acal-detail">
       <header>
         <div>
           <b>{dateLabel(date)} · {range(start, end)}</b>
-          <p>{slot ? `${SLOT_KIND_LABEL[slot.kind]} slot · ${slot.status === 'open' ? 'open for enquiries' : 'taken'}` : 'Custom weekly time (not a timetable slot)'}</p>
+          <p>{slot ? `Your ${SLOT_KIND_LABEL[slot.kind].toLowerCase()} slot · ${slot.status === 'open' ? 'still offered to enquiries' : 'not offered to enquiries'}` : 'Not one of your enquiry slots'}</p>
         </div>
-        {slot && (
-          <button type="button" className="act" onClick={() => onSlot(slot)}>
-            {slot.status === 'open' ? 'Mark slot taken' : 'Mark slot open'}
-          </button>
-        )}
       </header>
       {people.length === 0 ? <p className="acal-detail__none">No students in this slot{slot?.status === 'open' ? ' yet. New enquiries can pick it.' : '.'}</p> : (
         <ul>
@@ -99,13 +128,32 @@ function Detail({ ev, slots, onDecide, onSlot, onEdit }) {
               </div>
               <span className="acal-p__state">{STATE[p.state](p, target)}</span>
               {p.r?.note && <span className="acal-p__note">“{p.r.note}”</span>}
+              {p.r?.status === 'pending' && <Decide r={p.r} onDecide={onDecide} withReply={false} />}
+              {(() => {
+                const key = `${p.s.id}-${p.state}-${p.r?.id || ''}`
+                // The weekly lesson this entry stands for: the original one for moved lessons.
+                const orig = p.r ? { date: p.r.lesson_date, start: p.r.from_lesson?.start, end: p.r.from_lesson?.end } : { date, start: p.l.start, end: p.l.end }
+                if (picking === key) {
+                  const init = p.state === 'movedIn' ? { date: p.r.to_date, start: p.r.to_start, end: p.r.to_end } : { date, start: orig.start, end: orig.end }
+                  return <TimePick init={init} busy={busy} onCancel={() => setPicking(null)} onSave={(t) => act(() => onMove(p.s, orig, t))} />
+                }
+                if (p.r?.status === 'pending' || !orig.start) return null
+                return (
+                  <div className="acal-p__once">
+                    {p.state === 'regular' && (
+                      <>
+                        <button type="button" className="act" onClick={() => setPicking(key)}><Icon name="calendar" />Move this week only</button>
+                        <button type="button" className="act" disabled={busy} onClick={() => window.confirm(`Cancel ${p.s.name}'s lesson on ${dateLabel(date)}? Other weeks stay the same.`) && act(() => onCancelLesson(p.s, orig))}>Cancel this week</button>
+                      </>
+                    )}
+                    {p.state === 'movedIn' && <button type="button" className="act" onClick={() => setPicking(key)}><Icon name="edit" />Change time</button>}
+                    {['movedIn', 'movedOut', 'absent'].includes(p.state) && (
+                      <button type="button" className="act" disabled={busy} onClick={() => act(() => onUndo(p.r))}>{p.state === 'absent' ? 'Undo cancel' : 'Undo move'}</button>
+                    )}
+                  </div>
+                )
+              })()}
               <div className="acal-p__acts">
-                {p.r?.status === 'pending' && (
-                  <>
-                    <button type="button" className="btn btn--accent btn--sm" onClick={() => onDecide(p.r, 'approved')}>{p.r.kind === 'absence' ? 'Noted' : 'Approve'}</button>
-                    <button type="button" className="act" onClick={() => onDecide(p.r, 'rejected')}>Reject</button>
-                  </>
-                )}
                 <a className="act act--wa" href={waLink(p.s.phone)} target="_blank" rel="noopener noreferrer"><Icon name="chat" />WhatsApp</a>
                 <button type="button" className="act" onClick={() => onEdit(p.s)}><Icon name="edit" />Edit</button>
               </div>
@@ -125,25 +173,26 @@ export function AdminCalendar({ slots, setSlots, students, setStudents, requests
   const fail = (e) => (e.unauthorized ? onAuthError() : notify(e.message, 'error'))
   const waiting = requests.filter((r) => r.status === 'pending').length
 
-  const decide = async (r, status) => {
+  const decide = async (r, status, reply, time) => {
     try {
-      const { request, student } = await api('/api/admin/students', { method: 'POST', body: { action: 'decide', id: r.id, status } })
+      const { request, student } = await api('/api/admin/students', { method: 'POST', body: { action: 'decide', id: r.id, status, reply, time } })
       setRequests((list) => list.map((x) => (x.id === request.id ? request : x)))
       if (student) { setStudents((list) => list.map((x) => (x.id === student.id ? student : x))); refreshSlots() }
-      notify(status === 'approved' ? 'Approved' : 'Rejected')
+      notify(status === 'approved' ? (time ? 'Accepted at the new time' : 'Accepted') : 'Declined')
     } catch (e) { fail(e) }
   }
-  const toggleSlot = async (slot) => {
-    const status = slot.status === 'open' ? 'taken' : 'open'
-    setSlots((list) => list.map((x) => (x.id === slot.id ? { ...x, status } : x)))
+  // One-week changes made by the tutor: stored as an approved move / absence on that single lesson.
+  const oneOff = async (body, text) => {
     try {
-      await api('/api/admin/slots', { method: 'PATCH', body: { id: slot.id, status } })
-      notify(`${WEEKDAYS[slot.weekday]} ${range(slot.start, slot.end)} is now ${status}`)
-    } catch (e) {
-      setSlots((list) => list.map((x) => (x.id === slot.id ? slot : x)))
-      fail(e)
-    }
+      const { request } = await api('/api/admin/students', { method: 'POST', body })
+      setRequests((list) => (list.some((x) => x.id === request.id) ? list.map((x) => (x.id === request.id ? request : x)) : [request, ...list]))
+      notify(text)
+      setSel(null)
+    } catch (e) { fail(e) }
   }
+  const move = (s, orig, t) => oneOff({ action: 'move', studentId: s.id, lessonDate: orig.date, lessonStart: orig.start, toDate: t.date, toStart: t.start, toEnd: t.end }, `Moved ${s.name}'s lesson to ${dateLabel(t.date)} ${range(t.start, t.end)}`)
+  const cancelLesson = (s, orig) => oneOff({ action: 'cancelLesson', studentId: s.id, lessonDate: orig.date, lessonStart: orig.start }, `Cancelled ${s.name}'s lesson on ${dateLabel(orig.date)}`)
+  const undo = (r) => oneOff({ action: 'undo', id: r.id }, 'Undone: back to the usual time')
 
   return (
     <section className="acal">
@@ -151,8 +200,6 @@ export function AdminCalendar({ slots, setSlots, students, setStudents, requests
         <ul className="stu-legend">
           <li><i className="wc__dot wc__dot--lesson" />1-to-1</li>
           <li><i className="wc__dot wc__dot--group" />Group</li>
-          <li><i className="wc__dot wc__dot--open" />Open slot</li>
-          <li><i className="wc__dot wc__dot--taken" />Taken, no student</li>
           <li><i className="wc__dot wc__dot--off" />Absent / moved</li>
           <li><span className="wc__badge acal__badge">1</span>Request waiting</li>
         </ul>
@@ -164,8 +211,8 @@ export function AdminCalendar({ slots, setSlots, students, setStudents, requests
         title={`${days[0].sub} – ${days[6].sub}`}
         labels={{ prev: 'Previous week', next: 'Next week', today: 'This week', empty: 'Nothing on this day.', hour: (h) => `${h % 12 || 12}${h < 12 ? 'am' : 'pm'}` }}
       />
-      {picked ? <Detail ev={picked} slots={slots} onDecide={decide} onSlot={toggleSlot} onEdit={onEditStudent} />
-        : <p className="acal__hint">Tap a lesson or slot to see who is in it and act on requests.</p>}
+      {picked ? <Detail key={picked.key} ev={picked} slots={slots} onDecide={decide} onEdit={onEditStudent} onMove={move} onCancelLesson={cancelLesson} onUndo={undo} />
+        : <p className="acal__hint">Only your classes with confirmed students show here; this is the schedule they see as “occupied”. Tap a class to move or cancel it for one week, or to answer a request. Open enquiry slots are on the Enquiry slots tab.</p>}
     </section>
   )
 }
