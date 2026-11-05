@@ -48,13 +48,14 @@ function weekDays(week, slots, students, requests) {
     const events = []
     const make = (key, start, end, people, slot) => {
       const here = people.filter((p) => HERE.includes(p.state))
+      // Nobody comes (absent, cancelled or moved away): leave the time empty.
+      if (!here.length) return
       const pend = people.filter((p) => p.r?.status === 'pending').length
-      const tone = here.length ? (here.some((p) => p.kind === 'private') ? 'lesson' : 'group')
-        : people.length ? 'off' : slot?.status === 'taken' ? 'taken' : 'open'
-      const title = here.length ? here.map((p) => p.s.name.split(/\s+/)[0]).join(', ') : people.length ? 'Absent / moved' : slot?.status === 'taken' ? 'Taken' : 'Open'
+      const tone = here.some((p) => p.kind === 'private') ? 'lesson' : 'group'
+      const title = here.map((p) => p.s.name.split(/\s+/)[0]).join(', ')
       // Drag to move works on a lesson with exactly one student in it (not a shared group slot).
       const movable = here.length === 1 && people.length === 1 && ['regular', 'movedIn'].includes(here[0].state) ? here[0] : null
-      events.push({ key, start, end, tone, title, sub: range(start, end), badge: pend || undefined, dot: here.length > 0 || pend > 0, drag: !!movable && date >= today, info: { date, start, end, people, slot, movable } })
+      events.push({ key, start, end, tone, title, sub: range(start, end), badge: pend || undefined, dot: true, drag: !!movable && date >= today, info: { date, start, end, people, slot, movable } })
     }
     const ins = movedIn(date, students, requests)
     const placed = new Set()
@@ -73,7 +74,7 @@ function weekDays(week, slots, students, requests) {
     }
     // Moves to a time that is neither a slot nor anyone's weekly lesson.
     for (const p of ins.filter((x) => !placed.has(x.r.id))) make(`m-${p.r.id}`, p.r.to_start, p.r.to_end, [p], null)
-    return { date, head: WEEKDAYS[wd].slice(0, 3), sub: dateLabel(date).split(' ').slice(1).join(' '), past: date < today, events: events.filter((e) => e.info.people.length) }
+    return { date, head: WEEKDAYS[wd].slice(0, 3), sub: dateLabel(date).split(' ').slice(1).join(' '), past: date < today, events }
   })
 }
 
@@ -242,7 +243,6 @@ export function AdminCalendar({ slots, setSlots, students, setStudents, requests
         <ul className="stu-legend">
           <li><i className="wc__dot wc__dot--lesson" />1-to-1</li>
           <li><i className="wc__dot wc__dot--group" />Group</li>
-          <li><i className="wc__dot wc__dot--off" />Absent / moved</li>
           <li><span className="wc__badge acal__badge">1</span>Request waiting</li>
         </ul>
         {waiting > 0 && <span className="acal__wait">{waiting} request{waiting === 1 ? '' : 's'} waiting</span>}

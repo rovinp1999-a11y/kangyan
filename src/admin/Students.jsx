@@ -183,10 +183,16 @@ function WeeklyLessons({ value, onChange, slots, own = [] }) {
               {TIMES.filter((t) => toM(t) > toM(l.start)).map((t) => <option key={t} value={t}>{formatTime(t)}</option>)}
             </select>
             <button type="button" className="icon-btn icon-btn--danger" onClick={() => onChange(value.filter((_, j) => j !== i))} aria-label={`Remove lesson ${i + 1}`}><Icon name="x" /></button>
-            <div className="kindpick kindpick--sm wl__kind" role="group" aria-label={`Lesson ${i + 1} class type`}>
-              {['private', 'group'].map((k) => (
-                <button key={k} type="button" className={`kindpick__b kindpick__b--${k} ${l.kind === k ? 'is-on' : ''}`} aria-pressed={l.kind === k} onClick={() => setRow(i, 'kind', k)}>{KIND_LONG[k]}</button>
-              ))}
+            <div className="wl__extra">
+              <div className="kindpick kindpick--sm" role="group" aria-label={`Lesson ${i + 1} class type`}>
+                {['private', 'group'].map((k) => (
+                  <button key={k} type="button" className={`kindpick__b kindpick__b--${k} ${l.kind === k ? 'is-on' : ''}`} aria-pressed={l.kind === k} onClick={() => setRow(i, 'kind', k)}>{KIND_LONG[k]}</button>
+                ))}
+              </div>
+              {/* Leave empty to start right away; a start already passed isn't shown (it's kept). */}
+              <label className="wl__from"><span>Starts</span>
+                <input type="date" value={l.from && l.from >= todayMY() ? l.from : ''} min={todayMY()} onChange={(e) => setRow(i, 'from', e.target.value || undefined)} aria-label={`Lesson ${i + 1} first date`} />
+              </label>
             </div>
             <small className="wl__info">
               {mins / 60} hour{mins === 60 ? '' : 's'}

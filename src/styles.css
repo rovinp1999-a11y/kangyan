@@ -846,7 +846,9 @@ textarea.wz__input { resize: vertical; min-height: 0; font-size: 1rem; }
 .wl__row select { min-height: 40px !important; padding: 6px 8px !important; }
 .wl__row .icon-btn { width: 36px; height: 36px; }
 .wl__to { font-size: .82rem; color: var(--muted); }
-.wl__kind { grid-column: 1 / -1; justify-self: start; }
+.wl__extra { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.wl__from { display: inline-flex; align-items: center; gap: 6px; font-size: .8rem; font-weight: 700; }
+.wl__from input { min-height: 34px; padding: 4px 8px; border: 1.5px solid var(--line); border-radius: 10px; font: inherit; font-weight: 500; background: var(--white); }
 .wl__info { grid-column: 1 / -1; font-size: .76rem; color: var(--muted); }
 .sform__hint { font-size: .82rem; color: var(--muted); margin: 0; }
 .wl__add { justify-self: start; }
@@ -858,7 +860,7 @@ textarea.wz__input { resize: vertical; min-height: 0; font-size: 1rem; }
   .wl__start { grid-column: 1; grid-row: 2; }
   .wl__end { grid-column: 2 / 4; grid-row: 2; }
   .wl__to { display: none; }
-  .wl__kind { grid-row: 3; }
+  .wl__extra { grid-row: 3; }
   .wl__info { grid-row: 4; }
 }
 /* Students as rows; the profile opens in the drawer */
