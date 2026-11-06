@@ -115,15 +115,17 @@ async function feed(res, sql, token) {
 
 /** Everything the student page shows. */
 async function state(sql, s) {
-  // Weekly lessons that are still going (a lesson that ended for "this and all following" drops out).
-  const weekly = (Array.isArray(s.lessons) ? s.lessons : []).filter((w) => !w.until || w.until >= todayMY())
+  // Lessons that are still going (a lesson that ended for "this and all following" drops out);
+  // `weekly` is the ones that repeat, without one-off lessons.
+  const current = (Array.isArray(s.lessons) ? s.lessons : []).filter((w) => !w.until || w.until >= todayMY())
     .slice().sort((a, b) => a.weekday - b.weekday || a.start.localeCompare(b.start))
+  const weekly = current.filter((w) => !w.once)
   const requests = await sql.query(`SELECT ${REQ_COLUMNS} FROM student_requests WHERE student_id = $1 ORDER BY created_at DESC LIMIT 60`, [s.id])
   const [{ start_day: startDay }] = await sql`SELECT to_char(start_date, 'YYYY-MM-DD') AS start_day FROM students WHERE id = ${s.id}`
 
   // Every upcoming lesson from every weekly time, soonest first.
-  const lessons = weekly
-    .flatMap((w) => upcomingDates(w, { from: startDay || undefined }).map((date) => ({ date, weekday: w.weekday, start: w.start, end: w.end, kind: kindOf(w, s) })))
+  const lessons = current
+    .flatMap((w) => upcomingDates(w, { from: startDay || undefined }).map((date) => ({ date, weekday: w.weekday, start: w.start, end: w.end, kind: kindOf(w, s), once: !!w.once })))
     .sort((a, b) => startsAt(a.date, a.start) - startsAt(b.date, b.start))
     .map((l) => {
       const r = requests.find((x) => x.lesson_date === l.date && x.kind !== 'change' && ACTIVE.includes(x.status) && (!x.from_lesson || x.from_lesson.start === l.start))
@@ -230,7 +232,7 @@ async function createRequest(res, sql, s, b) {
     // "This and all following lessons": starts from one lesson (lessonDate), or from the next one.
     if (b.lessonDate) {
       const lesson = st.lessons.find((l) => l.date === b.lessonDate && (!b.lessonStart || l.start === b.lessonStart))
-      if (!lesson) return fail(res, 400, 'That lesson is not coming up', 'invalid')
+      if (!lesson || lesson.once) return fail(res, 400, 'That lesson is not coming up', 'invalid')
       lessonDate = lesson.date
       fromLesson = { weekday: lesson.weekday, start: lesson.start, end: lesson.end, kind: lesson.kind }
     } else {

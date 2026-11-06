@@ -2,7 +2,7 @@
 // lessons, login PIN, and the requests they send from the student page.
 import { useEffect, useMemo, useState } from 'react'
 import { LEVEL_GROUPS, SUBJECTS, WEEKDAYS, WEEKDAYS_SHORT, formatTime, slotLabel } from '../../shared/constants.js'
-import { dateLabel, todayMY, firstOn, kindOf, typeOf } from '../../shared/lessons.js'
+import { dateLabel, todayMY, firstOn, addDays, weekdayOf, kindOf, typeOf } from '../../shared/lessons.js'
 import { STRINGS, shortRange } from '../i18n.jsx'
 import { Icon, KIND_SHORT, STUDENT_KIND, api, fullDate, timeAgo, waLink } from './lib.jsx'
 import { Drawer } from './Enquiries.jsx'
@@ -17,9 +17,8 @@ const weeklyText = (l) => `${WEEKDAYS[l.weekday]} · ${shortRange(l.start, l.end
 const KIND_LONG = { private: '1-to-1', group: 'Group class' }
 const toT = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
 const toM = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
-// Half-hour choices from 7 AM to 10 PM for the weekly lesson rows.
+// Half-hour choices from 7 AM to 10 PM for the lesson rows.
 const TIMES = Array.from({ length: 31 }, (_, i) => toT(7 * 60 + i * 30))
-const NEW_LESSON = { weekday: 0, start: '17:30', end: '19:00', kind: 'private' }
 
 export function loginMessage(s, pin) {
   return fill('login', s.lang, { name: s.lang === 'zh' ? s.name : first(s.name), link: SITE, phone: localPhone(s.phone), pin })
@@ -132,14 +131,16 @@ function PinCard({ s, pin, onClose, notify }) {
 export const formFromStudent = (s) => ({
   ...BLANK, id: s.id, name: s.name, phone: localPhone(s.phone), level: s.level || '', lessonType: s.lesson_type, subjects: s.subjects || [],
   // Keep from / until (set by "this and all following lessons"); lessons already over are left out.
-  lessons: (s.lessons || []).filter((l) => !l.until || l.until >= todayMY()).map((l) => ({ weekday: l.weekday, start: l.start, end: l.end, kind: kindOf(l, s), ...(l.from ? { from: l.from } : {}), ...(l.until ? { until: l.until } : {}) })),
+  lessons: (s.lessons || []).filter((l) => !l.until || l.until >= todayMY()).map((l) => (l.once
+    ? { once: true, date: l.from, weekday: l.weekday, start: l.start, end: l.end, kind: kindOf(l, s) }
+    : { weekday: l.weekday, start: l.start, end: l.end, kind: kindOf(l, s), ...(l.from ? { from: l.from } : {}), ...(l.until ? { until: l.until } : {}) })),
   startDate: s.start_date || '', lang: s.lang, notes: s.notes || '', hourlyRate: s.hourly_rate ?? '',
   school: s.school || '', birthday: s.birthday || '', email: s.email || '', address: s.address || '',
   parentName: s.parent_name || '', parentRelation: s.parent_relation || '', parentPhone: localPhone(s.parent_phone),
 })
 
 const BLANK = {
-  name: '', phone: '', level: '', lessonType: 'private', subjects: [], lessons: [NEW_LESSON], startDate: '', lang: 'en', notes: '', hourlyRate: '',
+  name: '', phone: '', level: '', lessonType: 'private', subjects: [], lessons: [], startDate: '', lang: 'en', notes: '', hourlyRate: '',
   school: '', birthday: '', email: '', address: '', parentName: '', parentRelation: '', parentPhone: '',
 }
 const RELATION = { mother: 'Mother', father: 'Father', guardian: 'Guardian' }
@@ -155,11 +156,21 @@ const birthdayText = (b) => {
 }
 const parentLabel = (s) => [s.parent_name, RELATION[s.parent_relation]].filter(Boolean).join(' · ')
 
-/** One row per weekly lesson: day, start, end and 1-to-1 or group. Shows when it matches a timetable slot. */
-function WeeklyLessons({ value, onChange, slots, own = [] }) {
+/** A new lesson happens once, on the next day after `after` (or today); "Repeat weekly" is the tutor's choice. */
+const newLesson = (last) => {
+  const date = last?.once && last.date ? addDays(last.date, 1) : todayMY()
+  return { once: true, date, weekday: weekdayOf(date), start: last?.start || '17:30', end: last?.end || '19:00', kind: last?.kind || 'private' }
+}
+
+/** One row per lesson: once on a date, or weekly on a day; times; 1-to-1 or group. Shows when it matches a timetable slot. */
+function LessonRows({ value, onChange, slots, own = [] }) {
   const setRow = (i, k, v) => onChange(value.map((l, j) => {
     if (j !== i) return l
     const next = { ...l, [k]: k === 'weekday' ? Number(v) : v }
+    if (k === 'date' && v) next.weekday = weekdayOf(v)
+    // Switching between once and weekly keeps the day: a one-off lesson's date, or the next date on that weekday.
+    if (k === 'once' && v) { next.date = l.from && l.from >= todayMY() ? l.from : firstOn(todayMY(), l.weekday); delete next.from }
+    if (k === 'once' && !v) next.from = l.date && l.date > todayMY() ? l.date : undefined
     // Moving the start keeps the length; an end before the start is pushed back.
     if (k === 'start') next.end = toT(Math.min(toM('22:00'), toM(v) + (toM(l.end) - toM(l.start))))
     if (toM(next.end) <= toM(next.start)) next.end = toT(Math.min(toM('22:00'), toM(next.start) + 30))
@@ -168,49 +179,62 @@ function WeeklyLessons({ value, onChange, slots, own = [] }) {
   return (
     <div className="wl">
       {value.map((l, i) => {
-        const slot = slots.find((x) => x.weekday === l.weekday && x.start === l.start && x.end === l.end)
+        const slot = !l.once && slots.find((x) => x.weekday === l.weekday && x.start === l.start && x.end === l.end)
         const mins = toM(l.end) - toM(l.start)
         return (
           <div className="wl__row" key={i}>
-            <select className="wl__day" value={l.weekday} onChange={(e) => setRow(i, 'weekday', e.target.value)} aria-label={`Lesson ${i + 1} day`}>
-              {WEEKDAYS.map((d, k) => <option key={d} value={k}>{d}</option>)}
-            </select>
-            <select className="wl__start" value={l.start} onChange={(e) => setRow(i, 'start', e.target.value)} aria-label={`Lesson ${i + 1} start`}>
-              {TIMES.slice(0, -1).map((t) => <option key={t} value={t}>{formatTime(t)}</option>)}
-            </select>
-            <span className="wl__to">to</span>
-            <select className="wl__end" value={l.end} onChange={(e) => setRow(i, 'end', e.target.value)} aria-label={`Lesson ${i + 1} end`}>
-              {TIMES.filter((t) => toM(t) > toM(l.start)).map((t) => <option key={t} value={t}>{formatTime(t)}</option>)}
-            </select>
-            <button type="button" className="icon-btn icon-btn--danger" onClick={() => onChange(value.filter((_, j) => j !== i))} aria-label={`Remove lesson ${i + 1}`}><Icon name="x" /></button>
-            <div className="wl__extra">
+            <div className="wl__top">
+              <div className="kindpick kindpick--sm" role="group" aria-label={`Lesson ${i + 1} repeats`}>
+                <button type="button" className={`kindpick__b ${l.once ? 'is-on is-once' : ''}`} aria-pressed={!!l.once} onClick={() => setRow(i, 'once', true)}>Once</button>
+                <button type="button" className={`kindpick__b ${!l.once ? 'is-on is-weekly' : ''}`} aria-pressed={!l.once} onClick={() => setRow(i, 'once', false)}><Icon name="repeat" />Weekly</button>
+              </div>
               <div className="kindpick kindpick--sm" role="group" aria-label={`Lesson ${i + 1} class type`}>
                 {['private', 'group'].map((k) => (
                   <button key={k} type="button" className={`kindpick__b kindpick__b--${k} ${l.kind === k ? 'is-on' : ''}`} aria-pressed={l.kind === k} onClick={() => setRow(i, 'kind', k)}>{KIND_LONG[k]}</button>
                 ))}
               </div>
-              {/* Leave empty to start right away; a start already passed isn't shown (it's kept). */}
+              <button type="button" className="icon-btn icon-btn--danger" onClick={() => onChange(value.filter((_, j) => j !== i))} aria-label={`Remove lesson ${i + 1}`}><Icon name="x" /></button>
+            </div>
+            <div className="wl__when">
+              {l.once ? (
+                <input type="date" className="wl__date" value={l.date || ''} onChange={(e) => setRow(i, 'date', e.target.value)} aria-label={`Lesson ${i + 1} date`} required />
+              ) : (
+                <select className="wl__day" value={l.weekday} onChange={(e) => setRow(i, 'weekday', e.target.value)} aria-label={`Lesson ${i + 1} day`}>
+                  {WEEKDAYS.map((d, k) => <option key={d} value={k}>Every {d}</option>)}
+                </select>
+              )}
+              <select className="wl__start" value={l.start} onChange={(e) => setRow(i, 'start', e.target.value)} aria-label={`Lesson ${i + 1} start`}>
+                {TIMES.slice(0, -1).map((t) => <option key={t} value={t}>{formatTime(t)}</option>)}
+              </select>
+              <span className="wl__to">to</span>
+              <select className="wl__end" value={l.end} onChange={(e) => setRow(i, 'end', e.target.value)} aria-label={`Lesson ${i + 1} end`}>
+                {TIMES.filter((t) => toM(t) > toM(l.start)).map((t) => <option key={t} value={t}>{formatTime(t)}</option>)}
+              </select>
+            </div>
+            {!l.once && (
+              // Leave empty to start right away; a start already passed isn't shown (it's kept).
               <label className="wl__from"><span>Starts</span>
                 <input type="date" value={l.from && l.from >= todayMY() ? l.from : ''} min={todayMY()} onChange={(e) => setRow(i, 'from', e.target.value || undefined)} aria-label={`Lesson ${i + 1} first date`} />
               </label>
-            </div>
+            )}
             <small className="wl__info">
               {mins / 60} hour{mins === 60 ? '' : 's'}
-              {l.from && l.from > todayMY() && ` · starts ${dateLabel(l.from)}`}
-              {l.until && ` · last lesson ${dateLabel(l.until)}`}
-              {!slot ? ' · not one of your timetable slots'
-                : slot.status === 'taken' && !own.some((o) => o.weekday === l.weekday && o.start === l.start && o.end === l.end)
-                  ? ' · this timetable slot is already taken'
-                  : ` · matches your timetable slot${l.kind === 'private' ? ' (will be marked taken)' : ''}`}
+              {l.once ? (l.date ? ` · one lesson on ${dateLabel(l.date)}${l.date < todayMY() ? ' (already past, still counted in that month\'s fee)' : ''}` : ' · pick a date')
+                : <>
+                  {l.from && l.from > todayMY() && ` · starts ${dateLabel(l.from)}`}
+                  {l.until && ` · last lesson ${dateLabel(l.until)}`}
+                  {!slot ? ' · not one of your timetable slots'
+                    : slot.status === 'taken' && !own.some((o) => o.weekday === l.weekday && o.start === l.start && o.end === l.end)
+                      ? ' · this timetable slot is already taken'
+                      : ` · matches your timetable slot${l.kind === 'private' ? ' (will be marked taken)' : ''}`}
+                </>}
             </small>
           </div>
         )
       })}
-      {value.length < 7 && (
-        <button type="button" className="act wl__add" onClick={() => { const last = value[value.length - 1]; onChange([...value, last ? { weekday: (last.weekday + 2) % 7, start: last.start, end: last.end, kind: last.kind } : NEW_LESSON]) }}>
-          <Icon name="plus" />{value.length ? 'Add another weekly lesson' : 'Add a weekly lesson'}
-        </button>
-      )}
+      <button type="button" className="act wl__add" onClick={() => onChange([...value, newLesson(value[value.length - 1])])}>
+        <Icon name="plus" />{value.length ? 'Add another lesson' : 'Add a lesson'}
+      </button>
     </div>
   )
 }
@@ -223,7 +247,7 @@ function StudentForm({ initial, slots, onSave, onCancel, busy }) {
   return (
     <form className="sform" onSubmit={(e) => { e.preventDefault(); onSave({ ...f, lessonType: type }) }}>
       <h2>{editing ? `Edit ${initial.name}` : initial.enquiryId ? 'Add student from enquiry' : 'Add a student'}</h2>
-      {!editing && initial.enquiryId && <p className="sform__note">Filled in from the enquiry. Check the details, set their weekly lessons, then save. The enquiry is marked confirmed.</p>}
+      {!editing && initial.enquiryId && <p className="sform__note">Filled in from the enquiry. Check the details, add their lessons, then save. The enquiry is marked confirmed.</p>}
 
       <fieldset className="sform__sec">
         <legend>Student</legend>
@@ -281,8 +305,8 @@ function StudentForm({ initial, slots, onSave, onCancel, busy }) {
 
       <fieldset className="sform__sec">
         <legend>Lessons &amp; fees</legend>
-        <p className="sform__hint">Set each weekly lesson to 1-to-1 or group. A student can have both.</p>
-        <WeeklyLessons value={f.lessons} onChange={(v) => set('lessons', v)} slots={slots} own={initial.id ? initial.lessons : []} />
+        <p className="sform__hint">Add each lesson once on a date, or set it to repeat weekly. Each one is 1-to-1 or group; a student can have both.</p>
+        <LessonRows value={f.lessons} onChange={(v) => set('lessons', v)} slots={slots} own={initial.id ? initial.lessons : []} />
         {type !== 'group' && (
           <label className="sform__f"><span>Hourly rate (RM, for the fee suggestion)</span>
             <input inputMode="numeric" value={f.hourlyRate} placeholder="70" onChange={(e) => set('hourlyRate', e.target.value.replace(/[^\d]/g, ''))} />
@@ -327,13 +351,13 @@ function StudentProfile({ s, waiting, pin, onEdit, onShowPin, onNewPin, onSendLo
       {waiting > 0 && <p className="sprof__wait">{waiting} request{waiting === 1 ? '' : 's'} waiting — see Requests waiting above.</p>}
 
       <section className="sprof__sec">
-        <h3>Weekly lessons</h3>
+        <h3>Lessons</h3>
         {lessons.length ? lessons.map((l) => (
           <p className="scard__slot" key={`${l.weekday}-${l.start}-${l.from || ''}`}>
-            <Icon name="calendar" />Every {weeklyText(l)}<span className={`kchip kchip--${kindOf(l, s)}`}>{KIND_SHORT[kindOf(l, s)]}</span>
-            {(l.from && l.from > todayMY()) || l.until ? <small className="scard__range">{l.from && l.from > todayMY() ? `from ${dateLabel(l.from)}` : ''}{l.until ? ` until ${dateLabel(l.until)}` : ''}</small> : null}
+            <Icon name={l.once ? 'calendar' : 'repeat'} />{l.once ? `${dateLabel(l.from)} · ${shortRange(l.start, l.end, 'en')}` : `Every ${weeklyText(l)}`}<span className={`kchip kchip--${kindOf(l, s)}`}>{KIND_SHORT[kindOf(l, s)]}</span>
+            {!l.once && ((l.from && l.from > todayMY()) || l.until) ? <small className="scard__range">{l.from && l.from > todayMY() ? `from ${dateLabel(l.from)}` : ''}{l.until ? ` until ${dateLabel(l.until)}` : ''}</small> : null}
           </p>
-        )) : <p className="scard__slot is-none"><Icon name="calendar" />No weekly lessons yet</p>}
+        )) : <p className="scard__slot is-none"><Icon name="calendar" />No lessons coming up</p>}
         {s.lesson_type !== 'group' && <p className="sprof__small">Hourly rate RM{s.hourly_rate || 70}{s.hourly_rate ? '' : ' (default)'}{s.lesson_type === 'both' ? ', group lessons included' : ''}</p>}
       </section>
 
@@ -423,7 +447,7 @@ export function StudentsTab({ students, setStudents, requests, setRequests, slot
   const save = async (f) => {
     setBusy(true)
     try {
-      const body = { ...f, lessons: f.lessons.map(({ weekday, start, end, kind, from, until }) => ({ weekday, start, end, kind, from, until })), startDate: null, hourlyRate: f.hourlyRate === '' ? null : Number(f.hourlyRate) }
+      const body = { ...f, lessons: f.lessons.map(({ once, date, weekday, start, end, kind, from, until }) => (once ? { once, date, start, end, kind } : { weekday, start, end, kind, from, until })), startDate: null, hourlyRate: f.hourlyRate === '' ? null : Number(f.hourlyRate) }
       if (f.id) {
         const { student, cleared } = await api('/api/admin/students', { method: 'POST', body: { action: 'update', ...body } })
         setStudents((list) => list.map((x) => (x.id === student.id ? student : x)))
@@ -548,7 +572,7 @@ export function StudentsTab({ students, setStudents, requests, setRequests, slot
         ) : (
           <div className="srows" role="table" aria-label="Students">
             <div className="srow srow--head" role="row">
-              <span role="columnheader">Student</span><span role="columnheader">Weekly lessons</span><span role="columnheader">Parent</span><span role="columnheader">Login</span>
+              <span role="columnheader">Student</span><span role="columnheader">Lessons</span><span role="columnheader">Parent</span><span role="columnheader">Login</span>
             </div>
             {shown.map((s) => {
               const waiting = pending.filter((r) => r.student_id === s.id).length
@@ -563,7 +587,7 @@ export function StudentsTab({ students, setStudents, requests, setRequests, slot
                     </span>
                   </span>
                   <span className="srow__lessons" role="cell">
-                    {lessons.length ? lessons.map((l) => <span key={`${l.weekday}-${l.start}-${l.from || ''}`} className={s.lesson_type === 'both' ? `is-${kindOf(l, s)}` : ''}>{WEEKDAYS_SHORT[l.weekday]} {shortRange(l.start, l.end, 'en')}</span>) : <span className="is-none">No weekly lessons</span>}
+                    {lessons.length ? lessons.map((l) => <span key={`${l.weekday}-${l.start}-${l.from || ''}`} className={s.lesson_type === 'both' ? `is-${kindOf(l, s)}` : ''}>{l.once ? dateLabel(l.from) : WEEKDAYS_SHORT[l.weekday]} {shortRange(l.start, l.end, 'en')}</span>) : <span className="is-none">No lessons</span>}
                   </span>
                   <span className="srow__parent" role="cell">
                     {s.parent_name || s.parent_phone

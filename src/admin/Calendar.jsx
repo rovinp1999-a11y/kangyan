@@ -153,7 +153,7 @@ function Detail({ ev, slots, onDecide, onEdit, onMove, onMoveSeries, onCancelLes
                       init={init} busy={busy} title={`Move ${p.s.name.split(/\s+/)[0]}'s lesson to:`}
                       onCancel={() => setPicking(null)}
                       onSave={(t) => act(() => onMove(p.s, orig, t))}
-                      onSeries={(t) => act(() => onMoveSeries(p.s, orig, t))}
+                      onSeries={p.l?.once ? null : (t) => act(() => onMoveSeries(p.s, orig, t))}
                     />
                   )
                 }

@@ -273,7 +273,7 @@ export default function AdminPage() {
       name: r.student_name, phone: r.phone || '', level: r.level, lessonType: r.lesson_type === 'group' ? 'group' : 'private',
       subjects: r.subjects,
       // Start from the times they picked; the form lets you change or add more.
-      lessons: r.preferred_slots.filter((p) => p.live).map((p) => ({ weekday: p.weekday, start: p.start, end: p.end })).slice(0, 3),
+      lessons: r.preferred_slots.filter((p) => p.live).map((p) => ({ weekday: p.weekday, start: p.start, end: p.end, kind: r.lesson_type === 'group' ? 'group' : 'private' })).slice(0, 3),
       lang: r.lang === 'zh' ? 'zh' : 'en', enquiryId: r.id,
       school: r.school || '', email: r.email || '',
       // A parent's enquiry: their number is also where fee reminders go.

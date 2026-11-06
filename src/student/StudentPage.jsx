@@ -3,7 +3,7 @@
 // requests, and their own profile. The tutor approves or rejects each request in the admin.
 import { useCallback, useEffect, useState } from 'react'
 import { useLang, shortRange } from '../i18n.jsx'
-import { dateLabel, NOTICE_HOURS, startsAt, weekdayOf, firstOn } from '../../shared/lessons.js'
+import { dateLabel, NOTICE_HOURS, startsAt, weekdayOf, firstOn, addDays } from '../../shared/lessons.js'
 import WeekCalendar, { weekDates } from '../components/WeekCalendar.jsx'
 import { S } from './strings.js'
 import { Icon } from '../components/Icon.jsx'
@@ -69,41 +69,14 @@ const overlaps = (a, b) => a.start < b.end && b.start < a.end
 /** Requested time of a request (any time now, or an older slot-based one). */
 const reqTime = (r) => (r.to_start ? { start: r.to_start, end: r.to_end } : null)
 
-/** Bottom sheet for one request: absence, move one lesson, or change a regular lesson. Any time can be asked for. */
-function RequestSheet({ kind, lesson: given, preset, st, T, L, lang, token, onClose, onSent }) {
-  const [pick, setPick] = useState(null) // which lesson to move, when started from the calendar
-  const [from, setFrom] = useState(st.weekly.length === 1 ? st.weekly[0] : null) // which weekly lesson to change
-  const lesson = given || pick
-  const base = lesson || from || st.weekly[0] || { start: '17:30', end: '19:00' }
-  const len = Math.max(30, toMin(base.end) - toMin(base.start))
-  const startAt = preset?.start || base.start
-  const [date, setDate] = useState(preset?.date || '')
-  const [weekday, setWeekday] = useState(preset?.date ? weekdayOf(preset.date) : (from || st.weekly[0])?.weekday ?? 0)
-  const [start, setStart] = useState(startAt)
-  const [end, setEnd] = useState(toT(Math.min(22 * 60, toMin(startAt) + len)))
-  // The lesson's own class type (a student can have 1-to-1 and group lessons).
-  const group = ((lesson || from)?.kind || st.student.lessonType) === 'group'
-  // Like a calendar app: change only this lesson, or this and all following ones. Group classes only move as a whole.
-  const [pickedScope, setScope] = useState(kind === 'change' ? 'all' : 'one')
-  const scope = group ? 'all' : pickedScope
-  const sendKind = kind === 'reschedule' && scope === 'all' ? 'change' : kind
-  const movable = st.lessons.filter((l) => !l.request && (scope === 'all' || l.hours >= NOTICE_HOURS))
+/** Bottom sheet for telling the tutor they'll miss one lesson. */
+function AbsenceSheet({ lesson, st, T, lang, token, onClose, onSent }) {
+  const group = lesson.kind === 'group'
   const [note, setNote] = useState('')
   const [recording, setRecording] = useState(false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
-  const label = (o) => `${L.weekdays[o.weekday]} · ${shortRange(o.start, o.end, lang)}`
-  const timesOk = start < end
-  const ready = kind === 'absence'
-    || (kind === 'change' && timesOk && (from || !st.weekly.length))
-    || (kind === 'reschedule' && timesOk && date && lesson && (scope === 'all' || lesson.hours >= NOTICE_HOURS))
-  const d = lesson && `${dateLabel(lesson.date, lang)} ${shortRange(lesson.start, lesson.end, lang)}`
-  // Warn (but still allow) when the asked-for time overlaps another student's lesson.
-  const clash = kind === 'reschedule'
-    ? date && st.busy.some((x) => x.date === date && overlaps(x, { start, end }))
-    : kind === 'change' && st.busy.some((x) => weekdayOf(x.date) === weekday && overlaps(x, { start, end }))
-
-  const setStartKeep = (v) => { setStart(v); setEnd(toT(Math.min(22 * 60, toMin(v) + (toMin(end) - toMin(start) || len)))) }
+  const d = `${dateLabel(lesson.date, lang)} ${shortRange(lesson.start, lesson.end, lang)}`
 
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose() }
@@ -115,14 +88,10 @@ function RequestSheet({ kind, lesson: given, preset, st, T, L, lang, token, onCl
 
   const submit = async (e) => {
     e.preventDefault()
-    if (!ready) return
     setBusy(true)
     setErr('')
     try {
-      await call(token, {
-        action: 'request', kind: sendKind, lessonDate: lesson?.date, lessonStart: lesson?.start, fromWeekday: from?.weekday, fromStart: from?.start,
-        toDate: kind === 'reschedule' ? date : undefined, toWeekday: kind === 'change' ? weekday : undefined, toStart: start, toEnd: end, recording, note,
-      })
+      await call(token, { action: 'request', kind: 'absence', lessonDate: lesson.date, lessonStart: lesson.start, recording, note })
       onSent()
     } catch (e2) {
       setErr(T.errors[e2.code] || T.errors.server)
@@ -132,91 +101,19 @@ function RequestSheet({ kind, lesson: given, preset, st, T, L, lang, token, onCl
     }
   }
 
-  const h = { absence: T.sheet.absenceH, reschedule: T.sheet.rescheduleH, change: T.sheet.changeH }[kind]
-  const p = { absence: T.sheet.absenceP(d), reschedule: lesson ? T.sheet.rescheduleP(d) : T.sheet.moveHereP, change: T.sheet.changeP }[kind]
   return (
-    <div className="stu-sheet" role="dialog" aria-modal="true" aria-label={h}>
+    <div className="stu-sheet" role="dialog" aria-modal="true" aria-label={T.sheet.absenceH}>
       <div className="stu-sheet__bg" onClick={() => onClose()} />
       <form className="stu-sheet__panel" onSubmit={submit}>
-        <h2>{h}</h2>
-        <p className="stu-muted">{p}</p>
-
-        {kind === 'absence' && !group && lesson.hours < NOTICE_HOURS && <p className="stu-warn">{T.sheet.absenceLate}</p>}
-        {kind === 'absence' && group && (
+        <h2>{T.sheet.absenceH}</h2>
+        <p className="stu-muted">{T.sheet.absenceP(d)}</p>
+        {!group && lesson.hours < NOTICE_HOURS && <p className="stu-warn">{T.sheet.absenceLate}</p>}
+        {group && (
           <>
             <p className="stu-note">{T.sheet.absenceGroup}</p>
             <label className="stu-check"><input type="checkbox" checked={recording} onChange={(e) => setRecording(e.target.checked)} />{T.sheet.recording}</label>
           </>
         )}
-
-        {kind === 'change' && st.weekly.length > 1 && (
-          <div className="stu-opts" role="radiogroup" aria-label={T.sheet.whichLesson}>
-            <span className="stu-k">{T.sheet.whichLesson}</span>
-            {st.weekly.map((w) => (
-              <div key={`${w.weekday}-${w.start}`} className={`stu-opt ${from === w ? 'is-on' : ''}`}>
-                <button type="button" role="radio" aria-checked={from === w} onClick={() => setFrom(w)}>{label(w)}</button>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {kind === 'reschedule' && (
-          <div className="stu-scope" role="radiogroup" aria-label={T.sheet.scopeQ}>
-            {!group && (
-              <label className={`stu-scope__o ${scope === 'one' ? 'is-on' : ''}`}>
-                <input type="radio" name="scope" checked={scope === 'one'} onChange={() => setScope('one')} />
-                <span><b>{T.sheet.scopeOne}</b><small>{T.sheet.scopeOneP}</small></span>
-              </label>
-            )}
-            <label className={`stu-scope__o ${scope === 'all' ? 'is-on' : ''}`}>
-              <input type="radio" name="scope" checked={scope === 'all'} onChange={() => setScope('all')} />
-              <span><b>{T.sheet.scopeAll}</b><small>{group ? T.sheet.scopeAllGroup : T.sheet.scopeAllP}</small></span>
-            </label>
-          </div>
-        )}
-        {kind === 'reschedule' && given && scope === 'one' && given.hours < NOTICE_HOURS && <p className="stu-warn">{T.tooLate(NOTICE_HOURS)}</p>}
-
-        {kind === 'reschedule' && !given && (
-          <div className="stu-opts" role="radiogroup" aria-label={T.sheet.whichMove}>
-            <span className="stu-k">{T.sheet.whichMove}</span>
-            {movable.length ? movable.map((l) => (
-              <div key={`${l.date}-${l.start}`} className={`stu-opt ${pick === l ? 'is-on' : ''}`}>
-                <button type="button" role="radio" aria-checked={pick === l} onClick={() => setPick(l)}>{dateLabel(l.date, lang)} · {shortRange(l.start, l.end, lang)}</button>
-              </div>
-            )) : <p className="stu-note">{T.sheet.noneMovable}</p>}
-          </div>
-        )}
-
-        {kind !== 'absence' && (
-          <div className="stu-when">
-            <span className="stu-k">{T.sheet.newTime}</span>
-            <div className="stu-when__row">
-              {kind === 'reschedule' ? (
-                <label className="stu-field"><span>{T.sheet.date}</span>
-                  <input type="date" value={date} min={st.today} max={st.lastDay} onChange={(e) => setDate(e.target.value)} required />
-                </label>
-              ) : (
-                <label className="stu-field"><span>{T.sheet.day}</span>
-                  <select value={weekday} onChange={(e) => setWeekday(Number(e.target.value))}>
-                    {L.weekdays.map((x, i) => <option key={x} value={i}>{x}</option>)}
-                  </select>
-                </label>
-              )}
-              <label className="stu-field"><span>{T.sheet.from}</span>
-                <select value={start} onChange={(e) => setStartKeep(e.target.value)}>
-                  {TIMES.slice(0, -1).map((t) => <option key={t} value={t}>{clock(t, lang)}</option>)}
-                </select>
-              </label>
-              <label className="stu-field"><span>{T.sheet.to}</span>
-                <select value={end} onChange={(e) => setEnd(e.target.value)}>
-                  {TIMES.filter((t) => t > start && toMin(t) - toMin(start) <= 240).map((t) => <option key={t} value={t}>{clock(t, lang)}</option>)}
-                </select>
-              </label>
-            </div>
-            {clash ? <p className="stu-warn">{T.sheet.clash}</p> : <p className="stu-small">{T.sheet.anyTime}</p>}
-          </div>
-        )}
-
         <label className="stu-field">
           <span>{T.sheet.note}</span>
           <textarea rows={2} maxLength={500} placeholder={T.sheet.notePh} value={note} onChange={(e) => setNote(e.target.value)} />
@@ -224,15 +121,128 @@ function RequestSheet({ kind, lesson: given, preset, st, T, L, lang, token, onCl
         {err && <p className="stu-err" role="alert">{err}</p>}
         <div className="stu-sheet__acts">
           <button type="button" className="btn btn--ghost" onClick={() => onClose()}>{T.sheet.cancel}</button>
-          <button className="btn btn--accent" disabled={!ready || busy}>{busy ? T.sheet.sending : T.sheet.send}</button>
+          <button className="btn btn--accent" disabled={busy}>{busy ? T.sheet.sending : T.sheet.send}</button>
         </div>
       </form>
     </div>
   )
 }
 
+/** Which calendar week (0 = this one) a date falls in. */
+const weekOf = (today, date) => Math.floor(daysBetween(addDays(today, -weekdayOf(today)), date) / 7)
+
+/**
+ * Moving a lesson, done on the calendar itself: the lesson being moved is marked, the new time
+ * shows as a block wherever they tap (or drag it), and this panel under the calendar confirms it.
+ * "This and all following" sends a new regular time instead of one move.
+ */
+function MovePlanner({ move, setMove, st, T, L, lang, token, onDone, onCancel }) {
+  const { lesson } = move
+  const fixed = lesson.kind === 'group' ? 'all' : lesson.once ? 'one' : null // group classes move as a whole; a one-off lesson only by itself
+  const scope = fixed || move.scope
+  const movable = st.lessons.filter((l) => !l.request && startsAt(l.date, l.start) > Date.now())
+  const len = toMin(lesson.end) - toMin(lesson.start)
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const late = scope === 'one' && lesson.hours < NOTICE_HOURS
+  const has = !!move.date
+  const same = has && move.date === lesson.date && move.start === lesson.start && move.end === lesson.end
+  const clash = has && st.busy.some((x) => (scope === 'all' ? weekdayOf(x.date) === weekdayOf(move.date) && x.date >= move.date : x.date === move.date) && overlaps(x, move))
+  const ready = has && !same && !late && move.start < move.end
+  const when = (date, a, b) => `${dateLabel(date, lang)} · ${shortRange(a, b, lang)}`
+  const setStart = (v) => setMove({ ...move, start: v, end: toT(Math.min(22 * 60, toMin(v) + (toMin(move.end) - toMin(move.start) || len))) })
+  const pickLesson = (key) => {
+    const l = movable.find((x) => `${x.date}|${x.start}` === key)
+    if (l) setMove({ ...move, lesson: l, ...(move.date ? { end: toT(Math.min(22 * 60, toMin(move.start) + toMin(l.end) - toMin(l.start))) } : {}) })
+  }
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!ready) return
+    setBusy(true)
+    setErr('')
+    try {
+      await call(token, {
+        action: 'request', kind: scope === 'all' ? 'change' : 'reschedule', lessonDate: lesson.date, lessonStart: lesson.start,
+        toDate: move.date, toStart: move.start, toEnd: move.end, note,
+      })
+      onDone()
+    } catch (e2) {
+      setErr(T.errors[e2.code] || T.errors.server)
+      if (e2.code === 'auth') onCancel('auth')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <form className="stu-move" onSubmit={submit} aria-label={T.move.h}>
+      <div className="stu-move__route">
+        <div className="stu-move__end stu-move__end--from">
+          <span className="stu-k">{T.move.from}</span>
+          {movable.length > 1 ? (
+            <select value={`${lesson.date}|${lesson.start}`} onChange={(e) => pickLesson(e.target.value)} aria-label={T.move.pickLesson}>
+              {movable.map((l) => <option key={`${l.date}|${l.start}`} value={`${l.date}|${l.start}`}>{when(l.date, l.start, l.end)}</option>)}
+            </select>
+          ) : <b>{when(lesson.date, lesson.start, lesson.end)}</b>}
+        </div>
+        <span className="stu-move__arrow" aria-hidden="true"><Icon name="chevron" /></span>
+        <div className={`stu-move__end stu-move__end--to ${has ? '' : 'is-empty'}`}>
+          <span className="stu-k">{T.move.to}</span>
+          <b className="stu-move__cap">{has ? (scope === 'all' ? T.everyFrom(L.weekdays[weekdayOf(move.date)], shortRange(move.start, move.end, lang), dateLabel(move.date, lang)) : when(move.date, move.start, move.end)) : T.move.noTime}</b>
+        </div>
+      </div>
+
+      <div className="stu-move__times">
+        <label className="stu-field"><span>{T.sheet.date}</span>
+          <input type="date" value={move.date || ''} min={st.today} max={st.lastDay} onChange={(e) => e.target.value && setMove({ ...move, date: e.target.value, jump: true })} />
+        </label>
+        <label className="stu-field"><span>{T.sheet.from}</span>
+          <select value={move.start} onChange={(e) => setStart(e.target.value)} disabled={!has}>
+            {TIMES.slice(0, -1).map((t) => <option key={t} value={t}>{clock(t, lang)}</option>)}
+          </select>
+        </label>
+        <label className="stu-field"><span>{T.sheet.to}</span>
+          <select value={move.end} onChange={(e) => setMove({ ...move, end: e.target.value })} disabled={!has}>
+            {TIMES.filter((t) => t > move.start && toMin(t) - toMin(move.start) <= 240).map((t) => <option key={t} value={t}>{clock(t, lang)}</option>)}
+          </select>
+        </label>
+      </div>
+
+      {fixed ? <p className="stu-note">{fixed === 'all' ? T.sheet.scopeAllGroup : T.move.onceOnly}</p> : (
+        <div className="stu-scope" role="radiogroup" aria-label={T.sheet.scopeQ}>
+          {[['one', T.sheet.scopeOne, T.sheet.scopeOneP], ['all', T.sheet.scopeAll, T.sheet.scopeAllP]].map(([k, h, p]) => (
+            <label key={k} className={`stu-scope__o ${scope === k ? 'is-on' : ''}`}>
+              <input type="radio" name="scope" checked={scope === k} onChange={() => setMove({ ...move, scope: k })} />
+              <span><b>{h}</b><small>{p}</small></span>
+            </label>
+          ))}
+        </div>
+      )}
+      {late && <p className="stu-warn">{lesson.once ? T.tooLate(NOTICE_HOURS) : T.tooLateAll(NOTICE_HOURS)}</p>}
+      {same && <p className="stu-warn">{T.errors.same}</p>}
+      {clash && <p className="stu-warn">{T.sheet.clash}</p>}
+
+      <label className="stu-field">
+        <span>{T.sheet.note}</span>
+        <textarea rows={2} maxLength={500} placeholder={T.sheet.notePh} value={note} onChange={(e) => setNote(e.target.value)} />
+      </label>
+      {err && <p className="stu-err" role="alert">{err}</p>}
+      <div className="stu-sheet__acts">
+        <button type="button" className="btn btn--ghost" onClick={() => onCancel()}>{T.sheet.cancel}</button>
+        <button className="btn btn--accent" disabled={!ready || busy}>{busy ? T.sheet.sending : T.sheet.send}</button>
+      </div>
+    </form>
+  )
+}
+
 /** One week of the student's calendar: their lessons, plus other students' lessons as "occupied". */
-function studentWeek(st, week, T, L, lang) {
+/**
+ * While moving a lesson (`move`, with its effective `scope`), the lesson being moved (and with
+ * "all following", the same weekly lesson after it) is marked, and the new time shows as a block.
+ */
+function studentWeek(st, week, T, L, lang, move) {
   const ACTIVE = ['pending', 'approved']
   const short = (d) => (lang === 'zh' ? dateLabel(d, 'zh').split('（')[0] : dateLabel(d, 'en').split(' ').slice(1).join(' '))
   return weekDates(st.today, week, weekdayOf).map((date) => {
@@ -250,6 +260,17 @@ function studentWeek(st, week, T, L, lang) {
     st.busy.filter((x) => x.date === date).forEach((x, i) => {
       events.push({ key: `b-${date}-${x.start}-${i}`, start: x.start, end: x.end, tone: 'busy', title: T.cal.busy, sub: shortRange(x.start, x.end, lang), info: { type: 'busy', date, start: x.start, end: x.end } })
     })
+    if (move) {
+      const m = move.lesson
+      const all = move.scope === 'all'
+      const moving = (l) => l.date === m.date ? l.start === m.start : all && !l.once && l.date > m.date && l.weekday === m.weekday && l.start === m.start
+      events.forEach((e, i) => {
+        if (e.info.type === 'mine' && !e.info.lesson.request && moving(e.info.lesson)) events[i] = { ...e, tone: 'from', title: T.move.movingFrom, sub: shortRange(e.start, e.end, lang) }
+      })
+      if (move.date && (date === move.date || (all && date > move.date && wd === weekdayOf(move.date)))) {
+        events.push({ key: date === move.date ? 'ghost' : `ghost-${date}`, start: move.start, end: move.end, tone: 'new', dot: true, drag: date === move.date, title: T.move.newTime, sub: shortRange(move.start, move.end, lang), info: { type: 'ghost' } })
+      }
+    }
     return { date, head: L.weekdaysShort[wd], sub: short(date), past: date < st.today, events }
   })
 }
@@ -603,7 +624,8 @@ export default function StudentPage() {
   const [token, setToken] = useState(getTok)
   const [st, setSt] = useState(null)
   const [loadErr, setLoadErr] = useState('')
-  const [sheet, setSheet] = useState(null) // { kind, lesson?, preset? }
+  const [sheet, setSheet] = useState(null) // { kind: 'absence', lesson }
+  const [move, setMove] = useState(null) // { lesson, scope, date, start, end }: moving a lesson on the calendar
   const [week, setWeek] = useState(0)
   const [pinOpen, setPinOpen] = useState(false)
   const [tab, setTab] = useState(() => { try { const t = sessionStorage.getItem(TAB_KEY); return TABS.includes(t) ? t : 'home' } catch { return 'home' } })
@@ -661,6 +683,23 @@ export default function StudentPage() {
   }
 
   const go = (t) => { setTab(t); try { sessionStorage.setItem(TAB_KEY, t) } catch { /* ignore */ } window.scrollTo({ top: 0 }) }
+  const showWeek = (date) => setWeek(Math.max(0, Math.min((st?.weeksAhead || 1) - 1, weekOf(st.today, date))))
+
+  // Absences use the sheet; moving a lesson (one, or a new regular time) happens on the calendar.
+  const openRequest = (x) => {
+    if (x.kind === 'absence') return setSheet(x)
+    const movable = st.lessons.filter((l) => !l.request && startsAt(l.date, l.start) > Date.now())
+    const lesson = x.lesson || (x.kind === 'change' ? movable.find((l) => !l.once) : movable.find((l) => l.hours >= NOTICE_HOURS) || movable[0])
+    if (!lesson) return notify(T.sheet.noneMovable)
+    const start = x.preset?.start || lesson.start
+    setMove({ lesson, scope: x.kind === 'change' ? 'all' : 'one', date: x.preset?.date || null, start, end: toT(Math.min(22 * 60, toMin(start) + toMin(lesson.end) - toMin(lesson.start))) })
+    setSel(null)
+    showWeek(x.preset?.date || lesson.date)
+    go('calendar')
+  }
+  const moveTo = (date, start) => setMove((m) => ({ ...m, date, start, end: toT(Math.min(22 * 60, toMin(start) + toMin(m.end) - toMin(m.start))) }))
+  useEffect(() => { if (move?.jump) { showWeek(move.date); setMove((m) => ({ ...m, jump: false })) } }, [move?.jump]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (tab !== 'calendar') setMove(null) }, [tab])
   const waiting = st ? st.requests.filter((r) => r.status === 'pending').length : 0
   const owing = st ? (st.fees || []).some((f) => f.state === 'due' || f.state === 'overdue') : false
   const NAV = [
@@ -683,32 +722,56 @@ export default function StudentPage() {
 
   if (!token) return <div className="stu">{header}<main className="stu-main"><Login T={T} onToken={saveToken} /></main></div>
 
+  const moveScope = move && (move.lesson.kind === 'group' ? 'all' : move.lesson.once ? 'one' : move.scope)
   const calendar = st && (
-    <section className="stu-card stu-cal">
+    <section className={`stu-card stu-cal ${move ? 'is-moving' : ''}`}>
+      {move ? (
+        <div className="stu-move__banner" role="status">
+          <Icon name="repeat" />
+          <span>
+            <b>{T.move.banner(`${dateLabel(move.lesson.date, lang)} ${shortRange(move.lesson.start, move.lesson.end, lang)}`)}</b>
+            <small>{move.date ? T.move.adjust : T.move.tapHint}</small>
+          </span>
+          <button type="button" className="act" onClick={() => setMove(null)}>{T.sheet.cancel}</button>
+        </div>
+      ) : null}
       <div className="stu-cal__head">
         <ul className="stu-legend">
-          {['mine', 'pending', 'busy'].map((k) => <li key={k}><i className={`wc__dot wc__dot--${k}`} />{T.cal.legend[k]}</li>)}
+          {(move ? ['from', 'new', 'busy'] : ['mine', 'pending', 'busy']).map((k) => <li key={k}><i className={`wc__dot wc__dot--${k}`} />{T.cal.legend[k]}</li>)}
         </ul>
       </div>
       {(() => {
-        const days = studentWeek(st, week, T, L, lang)
-        const picked = sel?.startsWith('ask:')
+        const days = studentWeek(st, week, T, L, lang, move && { ...move, scope: moveScope })
+        const picked = !move && (sel?.startsWith('ask:')
           ? { key: sel, tone: 'free', info: { type: 'ask', date: sel.split(':')[1], start: sel.split(':').slice(2).join(':') || st.weekly[0]?.start || '17:30' } }
-          : days.flatMap((d) => d.events).find((e) => e.key === sel)
+          : days.flatMap((d) => d.events).find((e) => e.key === sel))
+        const labels = { prev: T.cal.prev, next: T.cal.next, today: T.cal.thisWeek, empty: T.cal.empty, ask: move ? T.move.ask : T.cal.askDay, hour: (h) => (lang === 'zh' ? `${h}点` : `${h % 12 || 12}${h < 12 ? 'am' : 'pm'}`) }
         return (
           <>
             <WeekCalendar
-              days={days} week={week} weeks={st.weeksAhead} onWeek={(n) => { setWeek(n); setSel(null) }}
-              selected={sel} onSelect={(e) => setSel(e.key === sel ? null : e.key)} today={st.today}
-              onEmpty={(d, t) => setSel(`ask:${d.date}:${t || ''}`)}
-              title={`${days[0].sub} – ${days[6].sub}`}
-              labels={{ prev: T.cal.prev, next: T.cal.next, today: T.cal.thisWeek, empty: T.cal.empty, ask: T.cal.askDay, hour: (h) => (lang === 'zh' ? `${h}点` : `${h % 12 || 12}${h < 12 ? 'am' : 'pm'}`) }}
+              days={days} week={week} weeks={st.weeksAhead} onWeek={(n) => { setWeek(n); setSel(null) }} today={st.today}
+              title={`${days[0].sub} – ${days[6].sub}`} labels={labels}
+              {...(move ? {
+                // Tapping a free (or occupied) time puts the new time there; the new-time block can also be dragged.
+                selected: 'ghost',
+                onSelect: (e) => { if (e.info.type === 'busy') moveTo(e.info.date, e.start) },
+                onEmpty: (d, t) => moveTo(d.date, t || move.start),
+                onDrag: (e, d, t) => { if (e.key === 'ghost') moveTo(d.date, t) },
+              } : {
+                selected: sel,
+                onSelect: (e) => setSel(e.key === sel ? null : e.key),
+                onEmpty: (d, t) => setSel(`ask:${d.date}:${t || ''}`),
+              })}
             />
-            {picked ? <CalDetail ev={picked} st={st} T={T} L={L} lang={lang} onSheet={setSheet} onCancel={cancel} /> : <p className="stu-muted stu-cal__hint">{st.weekly.length ? T.cal.hint : T.noSlot}</p>}
+            {move
+              ? <MovePlanner key={`${move.lesson.date}-${move.lesson.start}`} move={move} setMove={setMove} st={st} T={T} L={L} lang={lang} token={token}
+                  onCancel={(why) => { setMove(null); if (why === 'auth') logout() }}
+                  onDone={() => { setMove(null); notify(T.sheet.sent); load() }} />
+              : picked ? <CalDetail ev={picked} st={st} T={T} L={L} lang={lang} onSheet={openRequest} onCancel={cancel} /> : <p className="stu-muted stu-cal__hint">{st.lessons.length ? T.cal.hint : T.noSlot}</p>}
           </>
         )
       })()}
-      <CalendarLink T={T} token={st.calendarToken} notify={notify} />
+      {!move && <CalendarLink T={T} token={st.calendarToken} notify={notify} />}
     </section>
   )
 
@@ -775,7 +838,7 @@ export default function StudentPage() {
                 </section>
               ))}
 
-              {tab === 'home' && <Home st={st} T={T} L={L} lang={lang} token={token} notify={notify} go={go} onSheet={setSheet} />}
+              {tab === 'home' && <Home st={st} T={T} L={L} lang={lang} token={token} notify={notify} go={go} onSheet={openRequest} />}
               {tab === 'calendar' && calendar}
               {tab === 'history' && (
                 <div className="stu-cols">
@@ -796,9 +859,9 @@ export default function StudentPage() {
       </div>
 
       {sheet && st && (
-        <RequestSheet
-          {...sheet}
-          st={st} T={T} L={L} lang={lang} token={token}
+        <AbsenceSheet
+          lesson={sheet.lesson}
+          st={st} T={T} lang={lang} token={token}
           onClose={(why) => { setSheet(null); if (why === 'auth') logout() }}
           onSent={() => { setSheet(null); notify(T.sheet.sent); load() }}
         />
