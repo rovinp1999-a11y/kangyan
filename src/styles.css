@@ -845,7 +845,9 @@ textarea.wz__input { resize: vertical; min-height: 0; font-size: 1rem; }
 .wl__row { display: grid; gap: 8px; padding: 10px; border: 1.5px solid var(--line); border-radius: 12px; background: var(--paper); }
 .wl__top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .wl__top .icon-btn { width: 36px; height: 36px; margin-left: auto; }
-.wl__when { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 6px; }
+.wl__when { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.wl__when .wl__date, .wl__when .wl__day { flex: 1 1 100%; }
+.wl__endwrap { display: inline-flex; align-items: center; gap: 6px; }
 .wl__row select, .wl__date { min-height: 40px !important; padding: 6px 8px !important; }
 .wl__date { font: inherit; border: 2px solid var(--ink); border-radius: 10px; background: var(--white); min-width: 0; }
 .kindpick__b.is-on.is-once { background: var(--ink); color: var(--white); }
@@ -859,11 +861,6 @@ textarea.wz__input { resize: vertical; min-height: 0; font-size: 1rem; }
 .sform__hint { font-size: .82rem; color: var(--muted); margin: 0; }
 .wl__add { justify-self: start; }
 .wl__add .ic { width: 15px; height: 15px; }
-@media (max-width: 420px) {
-  .wl__when { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-  .wl__date, .wl__day { grid-column: 1 / -1; }
-  .wl__to { display: none; }
-}
 /* Students as rows; the profile opens in the drawer */
 .srows { background: var(--white); border: 2px solid var(--ink); border-radius: var(--radius); overflow: hidden; }
 .srow { all: unset; box-sizing: border-box; width: 100%; display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, .7fr) 18px; align-items: center; gap: 14px; padding: 11px 16px; border-top: 1px solid var(--line); cursor: pointer; font-size: .9rem; }
@@ -1461,12 +1458,37 @@ button.stu-tile:focus-visible { outline: 3px solid var(--purple); outline-offset
 .stu-move__end--to.is-empty { background: var(--paper); box-shadow: none; border-style: dashed; border-color: #A8A3B3; color: var(--muted); }
 .stu-move__arrow { display: grid; place-items: center; }
 .stu-move__arrow .ic { width: 22px; height: 22px; transform: rotate(-90deg); }
-.stu-move__times { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
-.stu-move__times select { font: inherit; font-size: 16px; width: 100%; min-height: 48px; padding: 10px 13px; border: 2px solid var(--ink); border-radius: 12px; background: var(--white); color: var(--ink); }
+.stu-move__times { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+.stu-move__times > :first-child { grid-column: 1 / -1; }
+.stu-move__times select { font: inherit; font-size: 16px; min-height: 48px; padding: 10px 8px; border: 2px solid var(--ink); border-radius: 12px; background: var(--white); color: var(--ink); }
 .stu-move__times select:disabled { opacity: .5; }
 @media (max-width: 560px) {
   .stu-move__route { grid-template-columns: minmax(0, 1fr); }
   .stu-move__arrow .ic { transform: none; }
-  .stu-move__times { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-  .stu-move__times > :first-child { grid-column: 1 / -1; }
+  .stu-move__times { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Hour : minute AM/PM picker */
+.tsel { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
+.tsel select { flex: 1 1 auto; min-width: 0; width: auto; }
+.tsel__sep { font-weight: 800; }
+
+/* Drafting a class from an empty time in My calendar */
+.acal-draft { border-color: var(--ink); box-shadow: 4px 4px 0 var(--yellow); }
+.acal-draft header p { font-size: .82rem; color: var(--muted); }
+.acal-draft__f { display: grid; gap: 4px; font-size: .84rem; font-weight: 700; }
+.acal-draft__f select { font: inherit; font-size: 16px; font-weight: 500; min-height: 44px; padding: 8px 10px; border: 2px solid var(--ink); border-radius: 12px; background: var(--white); color: var(--ink); }
+.acal-draft__when { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.acal-draft__when input[type=date] { font: inherit; font-size: 16px; min-height: 40px; padding: 6px 10px; border: 2px solid var(--ink); border-radius: 10px; background: var(--white); }
+.acal-draft__when select { font: inherit; font-size: 16px; min-height: 40px; padding: 6px 8px; border: 2px solid var(--ink); border-radius: 10px; background: var(--white); }
+.acal-draft__when > span { color: var(--muted); font-size: .85rem; }
+.acal-draft .kindpick__b { display: inline-flex; align-items: center; white-space: nowrap; }
+.acal-draft__warn { font-size: .82rem; color: #B91C1C; }
+
+/* Cancelling one lesson or this and all following in My calendar */
+.acal-detail__top { display: flex; flex-wrap: wrap; gap: 6px; }
+.acal-cancel { display: grid; gap: 6px; padding: 10px 12px; border-radius: 12px; background: #FEF2F2; border: 1.5px solid #FCA5A5; grid-column: 1 / -1; }
+.acal-cancel p { font-size: .86rem; font-weight: 700; }
+.acal-cancel small { font-size: .76rem; color: var(--muted); }
+.btn--danger { background: #DC2626; color: var(--white); border-color: var(--ink); }
+.btn--danger:hover { background: #B91C1C; }

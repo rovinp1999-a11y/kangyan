@@ -1,20 +1,9 @@
 // Weekly availability: add, edit, open/close slots and see who picked each one.
 import { useMemo, useState } from 'react'
-import { WEEKDAYS, WEEKDAYS_SHORT, SLOT_KINDS, SLOT_KIND_LABEL, formatRange, formatTime, slotLabel } from '../../shared/constants.js'
+import { WEEKDAYS, WEEKDAYS_SHORT, SLOT_KINDS, SLOT_KIND_LABEL, formatRange, slotLabel } from '../../shared/constants.js'
 import { Icon, KIND_SHORT, api, sortSlots, typeOf } from './lib.jsx'
 import { Person } from './Enquiries.jsx'
-
-// Quarter-hour choices from 7 AM to 10 PM, as a dropdown instead of a typed time.
-const QUARTERS = Array.from({ length: 61 }, (_, i) => { const m = 7 * 60 + i * 15; return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}` })
-function TimeSelect({ value, onChange, after, label }) {
-  const list = QUARTERS.filter((t) => (after ? t > after : t < '22:00'))
-  if (value && !list.includes(value)) list.unshift(value)
-  return (
-    <select value={value} onChange={(e) => onChange(e.target.value)} aria-label={label} required>
-      {list.map((t) => <option key={t} value={t}>{formatTime(t)}</option>)}
-    </select>
-  )
-}
+import TimeSelect from '../components/TimeSelect.jsx'
 
 const PRESETS = [
   ['17:30', '19:00'], ['19:00', '20:30'], ['20:30', '22:00'],
@@ -161,7 +150,7 @@ export function SlotsTab({ slots, setSlots, enquiries, students = [], onAuthErro
           <div className="adm-add__times">
             <TimeSelect value={start} onChange={setStart} label="Start time" />
             <span>to</span>
-            <TimeSelect value={end} onChange={setEnd} after={start} label="End time" />
+            <TimeSelect value={end} onChange={setEnd} label="End time" />
           </div>
         </div>
 
@@ -226,7 +215,7 @@ export function SlotsTab({ slots, setSlots, enquiries, students = [], onAuthErro
                             <div className="slot-edit__times">
                               <TimeSelect value={edit.start} onChange={(v) => setEdit({ ...edit, start: v })} label="Start time" />
                               <span>to</span>
-                              <TimeSelect value={edit.end} onChange={(v) => setEdit({ ...edit, end: v })} after={edit.start} label="End time" />
+                              <TimeSelect value={edit.end} onChange={(v) => setEdit({ ...edit, end: v })} label="End time" />
                             </div>
                             <div className="slot-edit__acts">
                               <button className="btn btn--accent slot-edit__save" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>

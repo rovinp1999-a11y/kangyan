@@ -1,11 +1,12 @@
 // Existing students: one row each, a profile with their details and parent, their weekly
 // lessons, login PIN, and the requests they send from the student page.
 import { useEffect, useMemo, useState } from 'react'
-import { LEVEL_GROUPS, SUBJECTS, WEEKDAYS, WEEKDAYS_SHORT, formatTime, slotLabel } from '../../shared/constants.js'
+import { LEVEL_GROUPS, SUBJECTS, WEEKDAYS, WEEKDAYS_SHORT, slotLabel } from '../../shared/constants.js'
 import { dateLabel, todayMY, firstOn, addDays, weekdayOf, kindOf, typeOf } from '../../shared/lessons.js'
 import { STRINGS, shortRange } from '../i18n.jsx'
 import { Icon, KIND_SHORT, STUDENT_KIND, api, fullDate, timeAgo, waLink } from './lib.jsx'
 import { Drawer } from './Enquiries.jsx'
+import TimeSelect from '../components/TimeSelect.jsx'
 import { fill } from './templates.js'
 
 const SITE = 'https://kangyan.work/student'
@@ -17,8 +18,6 @@ const weeklyText = (l) => `${WEEKDAYS[l.weekday]} · ${shortRange(l.start, l.end
 const KIND_LONG = { private: '1-to-1', group: 'Group class' }
 const toT = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
 const toM = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
-// Half-hour choices from 7 AM to 10 PM for the lesson rows.
-const TIMES = Array.from({ length: 31 }, (_, i) => toT(7 * 60 + i * 30))
 
 export function loginMessage(s, pin) {
   return fill('login', s.lang, { name: s.lang === 'zh' ? s.name : first(s.name), link: SITE, phone: localPhone(s.phone), pin })
@@ -82,13 +81,9 @@ export function Decide({ r, onDecide, withReply = true }) {
           {r.kind === 'reschedule'
             ? <input type="date" value={t.date} onChange={(e) => setT({ ...t, date: e.target.value })} aria-label="Date" />
             : <select value={t.weekday} onChange={(e) => setT({ ...t, weekday: Number(e.target.value) })} aria-label="Day">{WEEKDAYS.map((d, i) => <option key={d} value={i}>{d}</option>)}</select>}
-          <select value={t.start} onChange={(e) => { const len = toM(t.end) - toM(t.start); setT({ ...t, start: e.target.value, end: toT(Math.min(toM('22:00'), toM(e.target.value) + Math.max(30, len))) }) }} aria-label="Start">
-            {TIMES.slice(0, -1).map((x) => <option key={x} value={x}>{formatTime(x)}</option>)}
-          </select>
+          <TimeSelect value={t.start} onChange={(v) => { const len = toM(t.end) - toM(t.start); setT({ ...t, start: v, end: toT(Math.min(toM('23:59'), toM(v) + Math.max(30, len))) }) }} label="Start" />
           <span>to</span>
-          <select value={t.end} onChange={(e) => setT({ ...t, end: e.target.value })} aria-label="End">
-            {TIMES.filter((x) => x > t.start).map((x) => <option key={x} value={x}>{formatTime(x)}</option>)}
-          </select>
+          <TimeSelect value={t.end} onChange={(v) => setT({ ...t, end: v })} label="End" />
         </div>
       )}
       {withReply && <input className="sreq__reply" value={reply} onChange={(e) => setReply(e.target.value)} placeholder="Reply to the student (optional)" maxLength={500} aria-label="Reply to the student" />}
@@ -172,8 +167,8 @@ function LessonRows({ value, onChange, slots, own = [] }) {
     if (k === 'once' && v) { next.date = l.from && l.from >= todayMY() ? l.from : firstOn(todayMY(), l.weekday); delete next.from }
     if (k === 'once' && !v) next.from = l.date && l.date > todayMY() ? l.date : undefined
     // Moving the start keeps the length; an end before the start is pushed back.
-    if (k === 'start') next.end = toT(Math.min(toM('22:00'), toM(v) + (toM(l.end) - toM(l.start))))
-    if (toM(next.end) <= toM(next.start)) next.end = toT(Math.min(toM('22:00'), toM(next.start) + 30))
+    if (k === 'start') next.end = toT(Math.min(toM('23:59'), toM(v) + (toM(l.end) - toM(l.start))))
+    if (toM(next.end) <= toM(next.start)) next.end = toT(Math.min(toM('23:59'), toM(next.start) + 30))
     return next
   }))
   return (
@@ -203,13 +198,11 @@ function LessonRows({ value, onChange, slots, own = [] }) {
                   {WEEKDAYS.map((d, k) => <option key={d} value={k}>Every {d}</option>)}
                 </select>
               )}
-              <select className="wl__start" value={l.start} onChange={(e) => setRow(i, 'start', e.target.value)} aria-label={`Lesson ${i + 1} start`}>
-                {TIMES.slice(0, -1).map((t) => <option key={t} value={t}>{formatTime(t)}</option>)}
-              </select>
-              <span className="wl__to">to</span>
-              <select className="wl__end" value={l.end} onChange={(e) => setRow(i, 'end', e.target.value)} aria-label={`Lesson ${i + 1} end`}>
-                {TIMES.filter((t) => toM(t) > toM(l.start)).map((t) => <option key={t} value={t}>{formatTime(t)}</option>)}
-              </select>
+              <TimeSelect className="wl__start" value={l.start} onChange={(v) => setRow(i, 'start', v)} label={`Lesson ${i + 1} start`} />
+              <span className="wl__endwrap">
+                <span className="wl__to">to</span>
+                <TimeSelect className="wl__end" value={l.end} onChange={(v) => setRow(i, 'end', v)} label={`Lesson ${i + 1} end`} />
+              </span>
             </div>
             {!l.once && (
               // Leave empty to start right away; a start already passed isn't shown (it's kept).

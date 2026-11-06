@@ -73,7 +73,9 @@ async function occupied(sql, me, dates) {
     }
   }
   for (const r of reqs) if (r.kind === 'reschedule' && r.to_date && r.to_start && dates.includes(r.to_date)) out.push({ date: r.to_date, start: r.to_start, end: r.to_end })
-  return out
+  // A group class is one block, however many students are in it.
+  const seen = new Set()
+  return out.filter((x) => { const k = `${x.date}|${x.start}|${x.end}`; if (seen.has(k)) return false; seen.add(k); return true })
 }
 
 /** The student's private calendar-feed token (made on first use). */

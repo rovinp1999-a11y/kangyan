@@ -7,6 +7,7 @@ import { dateLabel, NOTICE_HOURS, startsAt, weekdayOf, firstOn, addDays } from '
 import WeekCalendar, { weekDates } from '../components/WeekCalendar.jsx'
 import { S } from './strings.js'
 import { Icon } from '../components/Icon.jsx'
+import TimeSelect from '../components/TimeSelect.jsx'
 
 const KEY = 'kangyan-student-token'
 const TAB_KEY = 'kangyan-student-tab'
@@ -63,7 +64,6 @@ function Login({ T, onToken }) {
 const toMin = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
 const toT = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
 // Half-hour choices from 8 AM to 10 PM.
-const TIMES = Array.from({ length: 29 }, (_, i) => toT(8 * 60 + i * 30))
 const clock = (t, lang) => (lang === 'zh' ? shortRange(t, toT(toMin(t) + 30), 'zh').split('–')[0] : (() => { const h = Number(t.slice(0, 2)); const m = t.slice(3, 5); return `${h % 12 || 12}${m === '00' ? '' : `:${m}`} ${h < 12 ? 'AM' : 'PM'}` })())
 const overlaps = (a, b) => a.start < b.end && b.start < a.end
 /** Requested time of a request (any time now, or an older slot-based one). */
@@ -199,14 +199,10 @@ function MovePlanner({ move, setMove, st, T, L, lang, token, onDone, onCancel })
           <input type="date" value={move.date || ''} min={st.today} max={st.lastDay} onChange={(e) => e.target.value && setMove({ ...move, date: e.target.value, jump: true })} />
         </label>
         <label className="stu-field"><span>{T.sheet.from}</span>
-          <select value={move.start} onChange={(e) => setStart(e.target.value)} disabled={!has}>
-            {TIMES.slice(0, -1).map((t) => <option key={t} value={t}>{clock(t, lang)}</option>)}
-          </select>
+          <TimeSelect value={move.start} onChange={setStart} label={T.sheet.from} lang={lang} disabled={!has} />
         </label>
         <label className="stu-field"><span>{T.sheet.to}</span>
-          <select value={move.end} onChange={(e) => setMove({ ...move, end: e.target.value })} disabled={!has}>
-            {TIMES.filter((t) => t > move.start && toMin(t) - toMin(move.start) <= 240).map((t) => <option key={t} value={t}>{clock(t, lang)}</option>)}
-          </select>
+          <TimeSelect value={move.end} onChange={(v) => setMove({ ...move, end: v })} label={T.sheet.to} lang={lang} disabled={!has} />
         </label>
       </div>
 
@@ -257,7 +253,8 @@ function studentWeek(st, week, T, L, lang, move) {
       const t = reqTime(r)
       if (t) events.push({ key: `in-${r.id}`, start: t.start, end: t.end, tone: r.status === 'approved' ? 'mine' : 'pending', dot: true, title: T.cal.movedIn, sub: r.status === 'approved' ? shortRange(t.start, t.end, lang) : `${shortRange(t.start, t.end, lang)} · ${T.cal.tone.pending}`, info: { type: 'in', request: r } })
     }
-    st.busy.filter((x) => x.date === date).forEach((x, i) => {
+    // Other students' lessons, except the group class this student is in (that is their own lesson).
+    st.busy.filter((x) => x.date === date && !st.lessons.some((l) => l.date === date && l.start === x.start && l.end === x.end)).forEach((x, i) => {
       events.push({ key: `b-${date}-${x.start}-${i}`, start: x.start, end: x.end, tone: 'busy', title: T.cal.busy, sub: shortRange(x.start, x.end, lang), info: { type: 'busy', date, start: x.start, end: x.end } })
     })
     if (move) {

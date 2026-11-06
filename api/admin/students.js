@@ -9,7 +9,9 @@
 //        `time` ({ date | weekday, start, end }) accepts it at a different time agreed with the student
 //   POST { action: 'move', studentId, lessonDate, lessonStart, toDate, toStart, toEnd } → tutor moves one lesson (this week only)
 //   POST { action: 'cancelLesson', studentId, lessonDate, lessonStart }              → tutor cancels one lesson
+//   POST { action: 'endSeries', studentId, lessonDate, lessonStart }   → cancel this and all following lessons (the weekly lesson stops)
 //   POST { action: 'moveSeries', studentId, lessonDate, lessonStart, toDate, toStart, toEnd } → this and all following lessons
+//   POST { action: 'addLesson', studentId, date, start, end, kind, weekly? } → an extra class on that date (or weekly from it)
 //   POST { action: 'setFee', studentId, month, amount (null = use suggestion), paid, note }  → one month's fee
 //   POST { action: 'announce', title, body, audience, studentId?, until? } / { action: 'unannounce', id }
 //   POST { action: 'saveTemplates', templates }   → WhatsApp message templates
@@ -281,6 +283,42 @@ export default async function handler(req, res) {
       await syncSlots(sql, s, after)
       const cleared = await clearOrphans(sql, after)
       return send(res, 200, { ok: true, student: after, cleared })
+    }
+
+    if (b.action === 'endSeries') {
+      // Cancel this and all following: the weekly lesson's last lesson becomes the week before.
+      const sid = Number(b.studentId)
+      const s = isDbId(sid) ? await getStudent(sql, sid) : null
+      if (!s) return fail(res, 404, 'Student not found')
+      if (!isDate(b.lessonDate)) return fail(res, 400, 'Invalid lesson date')
+      const old = (s.lessons || []).find((l) => l.start === b.lessonStart && covers(l, b.lessonDate))
+      if (!old) return fail(res, 400, 'That lesson is not on their schedule')
+      const until = addDays(b.lessonDate, -1)
+      const rest = (s.lessons || []).filter((l) => l !== old)
+      const lessons = sortLessons(old.once || (old.from && old.from > until) ? rest : [...rest, { ...old, until }])
+      await saveLessons(sql, s, lessons)
+      const after = await getStudent(sql, sid)
+      await syncSlots(sql, s, after)
+      const cleared = await clearOrphans(sql, after)
+      return send(res, 200, { ok: true, student: after, cleared })
+    }
+
+    if (b.action === 'addLesson') {
+      // From the calendar: one extra class on a date, or (weekly) a new weekly lesson starting that date.
+      const sid = Number(b.studentId)
+      const s = isDbId(sid) ? await getStudent(sql, sid) : null
+      if (!s) return fail(res, 404, 'Student not found')
+      if (!isDate(b.date)) return fail(res, 400, 'Pick a date')
+      const kind = b.kind === 'group' ? 'group' : 'private'
+      const [l] = (await cleanLessons(sql, [b.weekly === true
+        ? { weekday: weekdayOf(b.date), from: b.date, start: b.start, end: b.end, kind }
+        : { once: true, date: b.date, start: b.start, end: b.end, kind }])) || []
+      if (!l) return fail(res, 400, 'Check the start and end time')
+      if ((s.lessons || []).some((x) => covers(x, b.date) && x.start < l.end && l.start < x.end)) return fail(res, 409, `${s.name} already has a lesson at that time`)
+      await saveLessons(sql, s, sortLessons([...(s.lessons || []), l]))
+      const after = await getStudent(sql, sid)
+      await syncSlots(sql, s, after)
+      return send(res, 200, { ok: true, student: after })
     }
 
     if (b.action === 'move' || b.action === 'cancelLesson') {
