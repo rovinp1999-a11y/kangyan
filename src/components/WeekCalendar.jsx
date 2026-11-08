@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import { addDays } from '../../shared/lessons.js'
 
-// Week calendar shared by the student page and the admin. On wide screens it is a
-// time grid (days across, hours down); on phones it is a strip of days with the
-// chosen day's entries listed underneath. The parent builds the entries and shows
-// the details of whichever one is tapped.
+// Week calendar shared by the student page and the admin: a time grid (days across, hours
+// down) that scrolls up and down inside its frame, with the day headers kept in view. On
+// phones it shows one day of the same grid at a time, picked from a strip of the week's days.
+// The parent builds the entries and shows the details of whichever one is tapped.
 //
 //   days: [{ date: 'YYYY-MM-DD', head: 'Mon', sub: '2 Nov', past, events: [
 //     { key, start: 'HH:MM', end: 'HH:MM', tone, title, sub?, badge?, faded? } ] }]
 //   tone → colour class: mine | moved | off | pending | free | busy | open | taken | lesson | group
+//   week: 0 = this week; `back` earlier weeks (negative `week`) and `weeks` weeks from this one can be shown
 //   onEmpty(day, 'HH:MM' | null), optional: tapping an empty part of a day (rounded to the half hour)
 //   onDrag(event, day, 'HH:MM'), optional: entries with `drag: true` can be dragged on the time grid
 //     (snaps to half hours, keeps the length); a short tap still selects them
@@ -40,7 +41,7 @@ function lanes(events) {
   return out.map((e) => ({ ...e, of: Math.max(...out.filter((o) => o.start < e.end && e.start < o.end).map((o) => o.lane)) + 1 }))
 }
 
-export default function WeekCalendar({ days, week, weeks, onWeek, selected, onSelect, onEmpty, onDrag, today, labels, from = 8, to = 22, title }) {
+export default function WeekCalendar({ days, week, weeks, back = 0, onWeek, selected, onSelect, onEmpty, onDrag, today, labels, from = 6, to = 23, title }) {
   const narrow = useNarrow()
   const [day, setDay] = useState(() => Math.max(0, days.findIndex((d) => d.date === today)))
   useEffect(() => { setDay(week === 0 ? Math.max(0, days.findIndex((d) => d.date === today)) : 0) }, [week]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -53,10 +54,10 @@ export default function WeekCalendar({ days, week, weeks, onWeek, selected, onSe
 
   const nav = (
     <div className="wc__nav">
-      <button type="button" className="icon-btn" onClick={() => onWeek(week - 1)} disabled={week <= 0} aria-label={labels.prev}>‹</button>
+      <button type="button" className="icon-btn" onClick={() => onWeek(week - 1)} disabled={week <= -back} aria-label={labels.prev}>‹</button>
       <span className="wc__range">{title}</span>
       <button type="button" className="icon-btn" onClick={() => onWeek(week + 1)} disabled={week >= weeks - 1} aria-label={labels.next}>›</button>
-      {week > 0 && <button type="button" className="wc__today" onClick={() => onWeek(0)}>{labels.today}</button>}
+      {week !== 0 && <button type="button" className="wc__today" onClick={() => onWeek(0)}>{labels.today}</button>}
     </div>
   )
 
@@ -111,9 +112,60 @@ export default function WeekCalendar({ days, week, weeks, onWeek, selected, onSe
     </button>
   )
 
+  // Open scrolled to the first entry of the week (or 8 AM), like a calendar app.
+  const scroller = useRef(null)
+  const firstAt = Math.min(8 * 60, ...all.map((e) => toMin(e.start)))
+  useEffect(() => {
+    if (scroller.current) scroller.current.scrollTop = Math.max(0, ((firstAt - lo * 60) / 60 - 0.5) * ROW)
+  }, [week, narrow]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const grid = (shown) => (
+    <div className="wc__scroll" ref={scroller}>
+      <div className="wc__grid" style={{ '--rows': hours.length, '--row': `${ROW}px`, '--cols': shown.length }}>
+        <div className="wc__corner" />
+        {shown.map((d) => (
+          <div key={d.date} className={`wc__head ${d.date === today ? 'is-today' : ''} ${d.past ? 'is-past' : ''}`}><b>{d.head}</b><span>{d.sub}</span></div>
+        ))}
+        <div className="wc__hours">
+          {hours.map((h) => <span key={h} style={{ height: ROW }}>{labels.hour(h)}</span>)}
+        </div>
+        {shown.map((d) => {
+          const ci = days.indexOf(d)
+          return (
+            <div
+              key={d.date}
+              ref={(el) => { cols.current[ci] = el }}
+              className={`wc__col ${d.past ? 'is-past' : ''} ${d.date === today ? 'is-today' : ''} ${onEmpty && !d.past ? 'is-pickable' : ''}`}
+              style={{ height: hours.length * ROW }}
+              onClick={onEmpty && !d.past ? (e) => {
+                if (e.target !== e.currentTarget) return
+                const m = lo * 60 + Math.floor(((e.clientY - e.currentTarget.getBoundingClientRect().top) / ROW) * 2) * 30
+                const t = Math.min(Math.max(m, lo * 60), hi * 60 - 60)
+                onEmpty(d, `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`)
+              } : undefined}
+            >
+              {drag?.moved && (() => {
+                const at = landing(drag, drag.x ?? drag.x0)
+                if (!at || at.i !== ci) return null
+                const len = toMin(drag.e.end) - toMin(drag.e.start)
+                const h = Math.floor(at.m / 60)
+                const label = `${h % 12 || 12}${at.m % 60 ? `:${String(at.m % 60).padStart(2, '0')}` : ''} ${h < 12 ? 'AM' : 'PM'}`
+                return <div className="wc__ghost" style={{ top: ((at.m - lo * 60) / 60) * ROW, height: (len / 60) * ROW - 2 }}><span>{label}</span></div>
+              })()}
+              {lanes(d.events).map((e) => {
+                const top = ((toMin(e.start) - lo * 60) / 60) * ROW
+                const h = Math.max(22, ((toMin(e.end) - toMin(e.start)) / 60) * ROW - 2)
+                return chip(e, d, { top, height: h, left: `calc(${(100 / e.of) * e.lane}% + 2px)`, width: `calc(${100 / e.of}% - 4px)` })
+              })}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+
   if (narrow) {
     const d = days[day] || days[0]
-    const list = [...d.events].sort((a, b) => a.start.localeCompare(b.start))
     return (
       <div className="wc wc--narrow">
         {nav}
@@ -126,10 +178,8 @@ export default function WeekCalendar({ days, week, weeks, onWeek, selected, onSe
             </button>
           ))}
         </div>
-        <div className="wc__list">
-          {list.length ? list.map((e) => chip(e, d)) : <p className="wc__empty">{labels.empty}</p>}
-          {onEmpty && !d.past && <button type="button" className="wc__ask" onClick={() => onEmpty(d, null)}>{labels.ask}</button>}
-        </div>
+        {grid([d])}
+        {onEmpty && !d.past && <button type="button" className="wc__ask" onClick={() => onEmpty(d, null)}>{labels.ask}</button>}
       </div>
     )
   }
@@ -137,43 +187,7 @@ export default function WeekCalendar({ days, week, weeks, onWeek, selected, onSe
   return (
     <div className="wc">
       {nav}
-      <div className="wc__grid" style={{ '--rows': hours.length, '--row': `${ROW}px` }}>
-        <div className="wc__corner" />
-        {days.map((d) => (
-          <div key={d.date} className={`wc__head ${d.date === today ? 'is-today' : ''} ${d.past ? 'is-past' : ''}`}><b>{d.head}</b><span>{d.sub}</span></div>
-        ))}
-        <div className="wc__hours">
-          {hours.map((h) => <span key={h} style={{ height: ROW }}>{labels.hour(h)}</span>)}
-        </div>
-        {days.map((d, ci) => (
-          <div
-            key={d.date}
-            ref={(el) => { cols.current[ci] = el }}
-            className={`wc__col ${d.past ? 'is-past' : ''} ${d.date === today ? 'is-today' : ''} ${onEmpty && !d.past ? 'is-pickable' : ''}`}
-            style={{ height: hours.length * ROW }}
-            onClick={onEmpty && !d.past ? (e) => {
-              if (e.target !== e.currentTarget) return
-              const m = lo * 60 + Math.floor(((e.clientY - e.currentTarget.getBoundingClientRect().top) / ROW) * 2) * 30
-              const t = Math.min(Math.max(m, lo * 60), hi * 60 - 60)
-              onEmpty(d, `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`)
-            } : undefined}
-          >
-            {drag?.moved && (() => {
-              const at = landing(drag, drag.x ?? drag.x0)
-              if (!at || at.i !== ci) return null
-              const len = toMin(drag.e.end) - toMin(drag.e.start)
-              const h = Math.floor(at.m / 60)
-              const label = `${h % 12 || 12}${at.m % 60 ? `:${String(at.m % 60).padStart(2, '0')}` : ''} ${h < 12 ? 'AM' : 'PM'}`
-              return <div className="wc__ghost" style={{ top: ((at.m - lo * 60) / 60) * ROW, height: (len / 60) * ROW - 2 }}><span>{label}</span></div>
-            })()}
-            {lanes(d.events).map((e) => {
-              const top = ((toMin(e.start) - lo * 60) / 60) * ROW
-              const h = Math.max(22, ((toMin(e.end) - toMin(e.start)) / 60) * ROW - 2)
-              return chip(e, d, { top, height: h, left: `calc(${(100 / e.of) * e.lane}% + 2px)`, width: `calc(${100 / e.of}% - 4px)` })
-            })}
-          </div>
-        ))}
-      </div>
+      {grid(days)}
     </div>
   )
 }

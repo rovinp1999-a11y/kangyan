@@ -149,12 +149,14 @@ function MovePlanner({ move, setMove, st, T, L, lang, token, onDone, onCancel })
   const has = !!move.date
   const same = has && move.date === lesson.date && move.start === lesson.start && move.end === lesson.end
   const clash = has && st.busy.some((x) => (scope === 'all' ? weekdayOf(x.date) === weekdayOf(move.date) && x.date >= move.date : x.date === move.date) && overlaps(x, move))
-  const ready = has && !same && !late && move.start < move.end
+  const order = has && move.start >= move.end
+  const tooLong = has && !order && toMin(move.end) - toMin(move.start) > Math.max(4 * 60, len)
+  const ready = has && !same && !late && !order && !tooLong
   const when = (date, a, b) => `${dateLabel(date, lang)} · ${shortRange(a, b, lang)}`
-  const setStart = (v) => setMove({ ...move, start: v, end: toT(Math.min(22 * 60, toMin(v) + (toMin(move.end) - toMin(move.start) || len))) })
+  const setStart = (v) => setMove({ ...move, start: v, end: toT(Math.min(23 * 60 + 59, toMin(v) + (toMin(move.end) - toMin(move.start) || len))) })
   const pickLesson = (key) => {
     const l = movable.find((x) => `${x.date}|${x.start}` === key)
-    if (l) setMove({ ...move, lesson: l, ...(move.date ? { end: toT(Math.min(22 * 60, toMin(move.start) + toMin(l.end) - toMin(l.start))) } : {}) })
+    if (l) setMove({ ...move, lesson: l, ...(move.date ? { end: toT(Math.min(23 * 60 + 59, toMin(move.start) + toMin(l.end) - toMin(l.start))) } : {}) })
   }
 
   const submit = async (e) => {
@@ -218,6 +220,8 @@ function MovePlanner({ move, setMove, st, T, L, lang, token, onDone, onCancel })
       )}
       {late && <p className="stu-warn">{lesson.once ? T.tooLate(NOTICE_HOURS) : T.tooLateAll(NOTICE_HOURS)}</p>}
       {same && <p className="stu-warn">{T.errors.same}</p>}
+      {order && <p className="stu-warn">{T.move.order}</p>}
+      {tooLong && <p className="stu-warn">{T.move.tooLong}</p>}
       {clash && <p className="stu-warn">{T.sheet.clash}</p>}
 
       <label className="stu-field">
@@ -247,7 +251,8 @@ function studentWeek(st, week, T, L, lang, move) {
     for (const l of st.lessons.filter((x) => x.date === date)) {
       const r = l.request
       const tone = !r ? 'mine' : r.status === 'pending' ? 'pending' : r.kind === 'absence' ? 'off' : 'moved'
-      events.push({ key: `m-${date}-${l.start}`, start: l.start, end: l.end, tone, dot: true, title: T.cal.mine, sub: r ? `${shortRange(l.start, l.end, lang)} · ${T.cal.tone[tone]}` : shortRange(l.start, l.end, lang), info: { type: 'mine', lesson: l } })
+      const label = tone === 'off' && r.by_tutor ? T.cal.tone.cancelled : T.cal.tone[tone]
+      events.push({ key: `m-${date}-${l.start}`, start: l.start, end: l.end, tone, dot: true, title: T.cal.mine, sub: r ? `${shortRange(l.start, l.end, lang)} · ${label}` : shortRange(l.start, l.end, lang), info: { type: 'mine', lesson: l } })
     }
     for (const r of st.requests.filter((x) => x.kind === 'reschedule' && ACTIVE.includes(x.status) && x.to_date === date)) {
       const t = reqTime(r)
@@ -281,6 +286,7 @@ function CalDetail({ ev, st, T, L, lang, onSheet, onCancel }) {
     const l = info.lesson
     const r = l.request
     const late = l.hours < st.noticeHours
+    const past = startsAt(l.date, l.start) <= Date.now()
     const t = r && reqTime(r)
     return (
       <div className={`stu-detail stu-detail--${ev.tone}`}>
@@ -288,11 +294,11 @@ function CalDetail({ ev, st, T, L, lang, onSheet, onCancel }) {
         <b>{when(l.date, l.start, l.end)}</b>
         {r ? (
           <>
-            <p>{r.kind === 'absence' ? T.status.absent[r.status] : T.status.moved[r.status](t && r.to_date ? when(r.to_date, t.start, t.end) : r.to_label)}</p>
-            {r.status === 'pending' && <button type="button" className="stu-link" onClick={() => onCancel(r.id)}>{T.withdraw}</button>}
-            {r.status === 'approved' && <p className="stu-small">{T.cal.askTutor}</p>}
+            <p>{r.kind === 'absence' ? (r.by_tutor && r.status === 'approved' ? T.cal.tone.cancelled : T.status.absent[r.status]) : T.status.moved[r.status](t && r.to_date ? when(r.to_date, t.start, t.end) : r.to_label)}</p>
+            {r.status === 'pending' && !past && <button type="button" className="stu-link" onClick={() => onCancel(r.id)}>{T.withdraw}</button>}
+            {r.status === 'approved' && !past && <p className="stu-small">{T.cal.askTutor}</p>}
           </>
-        ) : (
+        ) : past ? <p>{T.cal.done}</p> : (
           <>
             <div className="stu-detail__acts">
               <button type="button" className="act" onClick={() => onSheet({ kind: 'absence', lesson: l })}>{T.cantMake}</button>
@@ -680,7 +686,7 @@ export default function StudentPage() {
   }
 
   const go = (t) => { setTab(t); try { sessionStorage.setItem(TAB_KEY, t) } catch { /* ignore */ } window.scrollTo({ top: 0 }) }
-  const showWeek = (date) => setWeek(Math.max(0, Math.min((st?.weeksAhead || 1) - 1, weekOf(st.today, date))))
+  const showWeek = (date) => setWeek(Math.max(-(st?.weeksBack || 0), Math.min((st?.weeksAhead || 1) - 1, weekOf(st.today, date))))
 
   // Absences use the sheet; moving a lesson (one, or a new regular time) happens on the calendar.
   const openRequest = (x) => {
@@ -689,12 +695,12 @@ export default function StudentPage() {
     const lesson = x.lesson || (x.kind === 'change' ? movable.find((l) => !l.once) : movable.find((l) => l.hours >= NOTICE_HOURS) || movable[0])
     if (!lesson) return notify(T.sheet.noneMovable)
     const start = x.preset?.start || lesson.start
-    setMove({ lesson, scope: x.kind === 'change' ? 'all' : 'one', date: x.preset?.date || null, start, end: toT(Math.min(22 * 60, toMin(start) + toMin(lesson.end) - toMin(lesson.start))) })
+    setMove({ lesson, scope: x.kind === 'change' ? 'all' : 'one', date: x.preset?.date || null, start, end: toT(Math.min(23 * 60 + 59, toMin(start) + toMin(lesson.end) - toMin(lesson.start))) })
     setSel(null)
     showWeek(x.preset?.date || lesson.date)
     go('calendar')
   }
-  const moveTo = (date, start) => setMove((m) => ({ ...m, date, start, end: toT(Math.min(22 * 60, toMin(start) + toMin(m.end) - toMin(m.start))) }))
+  const moveTo = (date, start) => setMove((m) => ({ ...m, date, start, end: toT(Math.min(23 * 60 + 59, toMin(start) + toMin(m.end) - toMin(m.start))) }))
   useEffect(() => { if (move?.jump) { showWeek(move.date); setMove((m) => ({ ...m, jump: false })) } }, [move?.jump]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (tab !== 'calendar') setMove(null) }, [tab])
   const waiting = st ? st.requests.filter((r) => r.status === 'pending').length : 0
@@ -746,7 +752,7 @@ export default function StudentPage() {
         return (
           <>
             <WeekCalendar
-              days={days} week={week} weeks={st.weeksAhead} onWeek={(n) => { setWeek(n); setSel(null) }} today={st.today}
+              days={days} week={week} weeks={st.weeksAhead} back={st.weeksBack || 0} onWeek={(n) => { setWeek(n); setSel(null) }} today={st.today}
               title={`${days[0].sub} – ${days[6].sub}`} labels={labels}
               {...(move ? {
                 // Tapping a free (or occupied) time puts the new time there; the new-time block can also be dragged.

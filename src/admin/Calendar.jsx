@@ -11,6 +11,7 @@ import { Icon, KIND_SHORT, api, waLink } from './lib.jsx'
 import { Decide, askedTime } from './Students.jsx'
 
 const WEEKS = 8
+const WEEKS_BACK = 26 // how far back My calendar can go
 const ACTIVE = ['pending', 'approved']
 const range = (a, b) => shortRange(a, b, 'en')
 
@@ -367,12 +368,12 @@ export function AdminCalendar({ slots, setSlots, students, setStudents, requests
         <ul className="stu-legend">
           <li><i className="wc__dot wc__dot--lesson" />1-to-1</li>
           <li><i className="wc__dot wc__dot--group" />Group</li>
-          <li><span className="wc__badge acal__badge">1</span>Request waiting</li>
+          <li><span className="wc__badge acal__badge acal__badge--key" aria-hidden="true" />Request waiting</li>
         </ul>
         {waiting > 0 && <span className="acal__wait">{waiting} request{waiting === 1 ? '' : 's'} waiting</span>}
       </div>
       <WeekCalendar
-        days={days} week={week} weeks={WEEKS} onWeek={(n) => { setWeek(n); setSel(null) }}
+        days={days} week={week} weeks={WEEKS} back={WEEKS_BACK} onWeek={(n) => { setWeek(n); setSel(null) }}
         selected={draft ? 'draft' : sel} today={todayMY()} onDrag={onDrag} onEmpty={startDraft}
         onSelect={(e) => { if (e.info.type === 'draft') return; setDraft(null); setDropped(null); setSel(e.key === sel ? null : e.key) }}
         title={`${days[0].sub} – ${days[6].sub}`}

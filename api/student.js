@@ -13,7 +13,7 @@ import { normalPhone, isPin, checkPin, hashPin, encryptPin, issueStudentToken, r
 import { notify } from './_notify.js'
 import { randomBytes } from 'node:crypto'
 import { occurrences, monthRange, monthOf, suggestedFee, monthProgress, feeState } from '../shared/schedule.js'
-import { NOTICE_HOURS, WEEKS_AHEAD, upcomingDates, hoursUntil, todayMY, isDate, weekdayOf, startsAt, dateLabel, addDays, covers, kindOf } from '../shared/lessons.js'
+import { NOTICE_HOURS, WEEKS_AHEAD, hoursUntil, todayMY, isDate, weekdayOf, startsAt, dateLabel, addDays, covers, kindOf } from '../shared/lessons.js'
 
 const MAX_FAILS = 8
 const WINDOW_MIN = 15
@@ -21,9 +21,12 @@ const REQ_COLUMNS = `id, created_at, kind, to_char(lesson_date, 'YYYY-MM-DD') AS
   to_char(to_date, 'YYYY-MM-DD') AS to_date, to_weekday, to_start, to_end, to_label, recording, note, status, reply, decided_at, by_tutor`
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/
 const MAX_LESSON_MIN = 4 * 60
+const WEEKS_BACK = 8 // how far back the student's calendar goes
 const toMin = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
 /** A requested start/end pair: real times, start before end, at most 4 hours. */
-const okTimes = (a, b) => HHMM.test(a || '') && HHMM.test(b || '') && a < b && toMin(b) - toMin(a) <= MAX_LESSON_MIN
+// A new time can be up to 4 hours long, or as long as the lesson being moved if that is longer.
+const okTimes = (a, b, from) => HHMM.test(a || '') && HHMM.test(b || '') && a < b
+  && toMin(b) - toMin(a) <= Math.max(MAX_LESSON_MIN, from ? toMin(from.end) - toMin(from.start) : 0)
 const ACTIVE = ['pending', 'approved']
 const str = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '')
 
@@ -125,22 +128,23 @@ async function state(sql, s) {
   const requests = await sql.query(`SELECT ${REQ_COLUMNS} FROM student_requests WHERE student_id = $1 ORDER BY created_at DESC LIMIT 60`, [s.id])
   const [{ start_day: startDay }] = await sql`SELECT to_char(start_date, 'YYYY-MM-DD') AS start_day FROM students WHERE id = ${s.id}`
 
-  // Every upcoming lesson from every weekly time, soonest first.
-  const lessons = current
-    .flatMap((w) => upcomingDates(w, { from: startDay || undefined }).map((date) => ({ date, weekday: w.weekday, start: w.start, end: w.end, kind: kindOf(w, s), once: !!w.once })))
-    .sort((a, b) => startsAt(a.date, a.start) - startsAt(b.date, b.start))
-    .map((l) => {
-      const r = requests.find((x) => x.lesson_date === l.date && x.kind !== 'change' && ACTIVE.includes(x.status) && (!x.from_lesson || x.from_lesson.start === l.start))
-      return { ...l, hours: hoursUntil(l.date, l.start), request: r || null }
-    })
-
   // The calendar covers this week and the next ones, from Monday.
   const today = todayMY()
   const monday = addDays(today, -weekdayOf(today))
   const dates = Array.from({ length: WEEKS_AHEAD * 7 }, (_, i) => addDays(monday, i))
 
-  // Lesson history (last 8 weeks, but not before the month they were added) and this month's count.
+  // Every lesson in that window and the weeks before it, worked out exactly like the tutor's
+  // calendar, soonest first. Moved-in lessons are shown from the requests instead.
   const stu = { ...s, start_date: startDay || null }
+  const lessons = occurrences(stu, requests, addDays(monday, -WEEKS_BACK * 7), dates[dates.length - 1])
+    .filter((o) => !o.movedFrom)
+    .map((o) => {
+      const w = (s.lessons || []).find((l) => l.start === o.start && covers(l, o.date))
+      const r = requests.find((x) => x.lesson_date === o.date && x.kind !== 'change' && ACTIVE.includes(x.status) && (!x.from_lesson || x.from_lesson.start === o.start))
+      return { date: o.date, weekday: weekdayOf(o.date), start: o.start, end: o.end, kind: o.kind, once: !!w?.once, hours: hoursUntil(o.date, o.start), request: r || null }
+    })
+
+  // Lesson history (last 8 weeks, but not before the month they were added) and this month's count.
   const joinedDay = new Date(Date.parse(s.created_at) + 8 * 3600e3).toISOString().slice(0, 10)
   const historyFrom = [addDays(today, -56), `${joinedDay.slice(0, 7)}-01`].sort().pop()
   const history = occurrences(stu, requests, historyFrom, today)
@@ -169,7 +173,7 @@ async function state(sql, s) {
     profile: await profileOf(sql, s.id),
     history, progress: monthProgress(stu, requests), fees, announcements: news, calendarToken: await calendarToken(sql, s),
     weekly: weekly.map((w) => ({ weekday: w.weekday, start: w.start, end: w.end, kind: kindOf(w, s), from: w.from || null, until: w.until || null })),
-    lessons, requests, noticeHours: NOTICE_HOURS, weeksAhead: WEEKS_AHEAD, today, lastDay: dates[dates.length - 1], startDay: startDay || null,
+    lessons, requests, noticeHours: NOTICE_HOURS, weeksAhead: WEEKS_AHEAD, weeksBack: WEEKS_BACK, today, lastDay: dates[dates.length - 1], startDay: startDay || null,
     // Other confirmed students' lessons, shown only as "occupied" (never who).
     busy: await occupied(sql, s.id, dates),
   }
@@ -209,6 +213,7 @@ async function createRequest(res, sql, s, b) {
   const kind = b.kind
   if (!['reschedule', 'absence', 'change'].includes(kind)) return fail(res, 400, 'Invalid request', 'invalid')
   const st = await state(sql, s)
+  st.lessons = st.lessons.filter((l) => l.hours > 0) // only lessons still to come can be changed
   const note = str(b.note, 500)
   let lessonDate = null
   let fromLesson = null
@@ -225,7 +230,7 @@ async function createRequest(res, sql, s, b) {
   }
   if (kind === 'reschedule') {
     // Any date and time can be asked for; the tutor accepts, declines or adjusts it.
-    if (!isDate(b.toDate) || b.toDate < st.today || b.toDate > st.lastDay || !okTimes(b.toStart, b.toEnd)) return fail(res, 400, 'Pick a date and time', 'times')
+    if (!isDate(b.toDate) || b.toDate < st.today || b.toDate > st.lastDay || !okTimes(b.toStart, b.toEnd, fromLesson)) return fail(res, 400, 'Pick a date and time', 'times')
     if (startsAt(b.toDate, b.toStart) <= Date.now()) return fail(res, 400, 'Pick a time in the future', 'past')
     if (b.toDate === lessonDate && b.toStart === fromLesson.start) return fail(res, 400, 'That is the same time', 'same')
     to = { date: b.toDate, weekday: weekdayOf(b.toDate), start: b.toStart, end: b.toEnd }
@@ -245,7 +250,7 @@ async function createRequest(res, sql, s, b) {
     // A date for the first moved lesson (from the calendar), or just a weekday.
     const startDate = isDate(b.toDate) && b.toDate >= st.today && b.toDate <= st.lastDay ? b.toDate : null
     const weekday = startDate ? weekdayOf(startDate) : Number(b.toWeekday)
-    if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6 || !okTimes(b.toStart, b.toEnd)) return fail(res, 400, 'Pick a day and time', 'times')
+    if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6 || !okTimes(b.toStart, b.toEnd, fromLesson)) return fail(res, 400, 'Pick a day and time', 'times')
     if (fromLesson && weekday === fromLesson.weekday && b.toStart === fromLesson.start && b.toEnd === fromLesson.end) return fail(res, 400, 'That is the same time', 'same')
     if (st.requests.some((r) => r.kind === 'change' && r.status === 'pending' && sameLesson(r.from_lesson, fromLesson))) {
       return fail(res, 409, 'You already asked to change this lesson', 'duplicate')
