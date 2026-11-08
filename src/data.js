@@ -10,5 +10,5 @@ export const subjectTiles = {
 }
 
 export const CONTACT = {
-  email: 'girlychangkangyan@gmail.com',
+  email: 'kangyan1204@gmail.com',
 }
