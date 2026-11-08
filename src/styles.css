@@ -1541,3 +1541,13 @@ button.stu-tile:focus-visible { outline: 3px solid var(--purple); outline-offset
 /* Only in the copy drawn into the PDF: html2canvas sets text a little low and mis-measures
    tabular figures (it would add gaps around "-" and "@"). */
 .rcpt--pdf { font-variant-numeric: normal; }
+
+/* Editing the receipt's line items */
+.rcpt-tools__edit { justify-self: start; }
+.rcpt-lines { display: grid; gap: 8px; padding: 10px; border: 1.5px solid var(--line); border-radius: 12px; background: var(--paper); }
+.rcpt-lines__row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) 36px; gap: 6px; align-items: end; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.rcpt-lines__row > input { grid-column: 1 / -1; }
+.rcpt-lines__row input, .rcpt-lines__row select { font: inherit; font-size: 16px; min-height: 38px; width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1.5px solid var(--ink); border-radius: 9px; background: var(--white); color: var(--ink); }
+.rcpt-lines__row label { display: grid; gap: 2px; font-size: .72rem; font-weight: 700; color: var(--muted); }
+.rcpt-lines__row .icon-btn { width: 36px; height: 38px; }
+.rcpt-lines__warn { font-size: .8rem; color: #B45309; }

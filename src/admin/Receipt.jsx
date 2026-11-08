@@ -13,13 +13,18 @@ const toMin = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
 const localPhone = (p) => (p?.startsWith('60') ? `0${p.slice(2)}` : p || '')
 const money = (n) => `RM${Number(n || 0).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
+const SUBJECT = {
+  en: {},
+  zh: { Physics: '物理', Chemistry: '化学', Biology: '生物', Science: '科学', Mathematics: '数学' },
+}
 const RECEIPT_W = 600 // px; the PDF is drawn from the receipt at this width
 
 const L = {
   en: {
     title: 'Receipt', no: 'Receipt no.', date: 'Date', period: 'Period', from: 'Received from', student: 'Student',
     desc: 'Description', qty: 'Qty', rate: 'Unit price', amount: 'Amount',
-    fee: (m) => `Tuition fee, ${m}`, groupFee: 'Group class, monthly fee', hrs: (h) => `${h} hr${h === 1 ? '' : 's'}`,
+    fee: (m) => `Tuition fee, ${m}`, groupFee: 'Group class, monthly fee', tuition: 'Tuition',
+    kind: { private: '1-to-1 lessons', group: 'Group class' }, count: (n) => `${n} lesson${n === 1 ? '' : 's'}`, absent: (n) => `incl. ${n} absence${n === 1 ? '' : 's'}`, hrs: (h) => `${h} hr${h === 1 ? '' : 's'}`,
     total: 'Total', paid: 'Amount paid', balance: 'Balance due', parentOf: (n) => `Parent of ${n}`,
     on: (d) => `Received on ${d}`, method: 'Payment', note: 'Note',
     thanks: 'Thank you for your payment.', valid: 'This is a computer-generated receipt and does not require a signature.',
@@ -29,7 +34,8 @@ const L = {
   zh: {
     title: '收据', no: '收据编号', date: '日期', period: '期间', from: '付款人', student: '学生',
     desc: '项目', qty: '数量', rate: '单价', amount: '金额',
-    fee: (m) => `学费（${m}）`, groupFee: '小组课月费', hrs: (h) => `${h} 小时`,
+    fee: (m) => `学费（${m}）`, groupFee: '小组课月费', tuition: '补习',
+    kind: { private: '一对一课', group: '小组课' }, count: (n) => `${n} 堂`, absent: (n) => `含 ${n} 次请假`, hrs: (h) => `${h} 小时`,
     total: '总额', paid: '已付金额', balance: '尚欠金额', parentOf: (n) => `${n}的家长`,
     on: (d) => `于${d}收讫`, method: '付款方式', note: '备注',
     thanks: '谢谢您的付款。', valid: '本收据由电脑生成，无需签名。',
@@ -60,9 +66,33 @@ export function ReceiptDrawer({ s, fee, month, requests, notify, onClose }) {
   const paidOn = fee.paid_at ? new Date(Date.parse(fee.paid_at) + 8 * 3600e3).toISOString().slice(0, 10) : null
   const [a, b] = monthRange(month)
   const held = occurrences(s, requests.filter((r) => r.student_id === s.id), a, b).filter((o) => o.status === 'lesson' || o.status === 'absent')
-  const hours = Math.round((held.reduce((n, o) => n + toMin(o.end) - toMin(o.start), 0) / 60) * 10) / 10
-  // Show hours × rate only when that is what the fee is (not for group fees or a changed amount).
-  const hourly = s.lesson_type !== 'group' && hours > 0 && Math.round(hours * (s.hourly_rate || 70)) === fee.amount
+
+  // Line items worked out from what the student actually had that month: one line per class
+  // type (1-to-1 / group) with its lessons and hours × the hourly rate, or the monthly fee for
+  // group-only students. If the fee was changed by hand, one line with that amount.
+  const breakdown = (lang) => {
+    const t = L[lang]
+    const title = (s.subjects || []).length ? s.subjects.map((x) => SUBJECT[lang][x] || x).join(lang === 'zh' ? '、' : ', ') : t.tuition
+    const one = (detail) => [{ title, detail, qty: 1, unit: '', price: fee.amount || 0 }]
+    if (s.lesson_type === 'group') return one(`${t.groupFee} · ${t.month(month)}`)
+    const rate = s.hourly_rate || 70
+    const lines = ['private', 'group'].map((k) => {
+      const list = held.filter((o) => o.kind === k)
+      const hrs = Math.round((list.reduce((n, o) => n + toMin(o.end) - toMin(o.start), 0) / 60) * 100) / 100
+      const away = list.filter((o) => o.status === 'absent').length
+      return list.length && { title, detail: [t.kind[k], t.count(list.length), away ? t.absent(away) : null].filter(Boolean).join(' · '), qty: hrs, unit: 'hrs', price: rate }
+    }).filter(Boolean)
+    const sum = lines.reduce((n, l) => n + l.qty * l.price, 0)
+    return lines.length && Math.round(sum) === fee.amount ? lines : one(t.fee(t.month(month)))
+  }
+  const [edited, setEdited] = useState(null) // line items changed by hand (kept when switching language)
+  const [editing, setEditing] = useState(false)
+  const lines = edited || breakdown(lang)
+  const num = (v) => Number(v) || 0 // qty and price can be half-typed text while editing
+  const lineTotal = (l) => Math.round(num(l.qty) * num(l.price) * 100) / 100
+  const total = Math.round(lines.reduce((n, l) => n + lineTotal(l), 0) * 100) / 100
+  const paidAmt = fee.amount || 0
+  const setLine = (i, k, v) => setEdited(lines.map((l, j) => (j === i ? { ...l, [k]: v } : l)))
   const parent = s.parent_name?.trim()
   const file = `Kangyan receipt ${no} ${s.name}.pdf`
 
@@ -120,6 +150,28 @@ export function ReceiptDrawer({ s, fee, month, requests, notify, onClose }) {
           <button type="button" className="btn btn--accent btn--sm" disabled={!!busy} onClick={download}><Icon name="download" />{busy === 'pdf' ? 'Making PDF…' : 'Download PDF'}</button>
           <button type="button" className="act act--wa" disabled={!!busy || !to} onClick={sendWhatsApp}><Icon name="chat" />{busy === 'wa' ? 'Preparing…' : s.parent_phone ? 'Send to parent on WhatsApp' : 'Send on WhatsApp'}</button>
         </div>
+        <button type="button" className="act rcpt-tools__edit" onClick={() => setEditing((x) => !x)} aria-expanded={editing}><Icon name="edit" />{editing ? 'Done editing lines' : 'Edit lines'}</button>
+        {editing && (
+          <div className="rcpt-lines">
+            {lines.map((l, i) => (
+              <div className="rcpt-lines__row" key={i}>
+                <input value={l.title} onChange={(e) => setLine(i, 'title', e.target.value)} aria-label={`Line ${i + 1} description`} placeholder="Description" />
+                <input value={l.detail} onChange={(e) => setLine(i, 'detail', e.target.value)} aria-label={`Line ${i + 1} details`} placeholder="Details (optional)" />
+                <label><span>Qty</span><input inputMode="decimal" value={l.qty} onChange={(e) => setLine(i, 'qty', e.target.value.replace(/[^\d.]/g, ''))} /></label>
+                <label><span>Unit</span>
+                  <select value={l.unit} onChange={(e) => setLine(i, 'unit', e.target.value)}><option value="hrs">hours</option><option value="">items</option></select>
+                </label>
+                <label><span>Price (RM)</span><input inputMode="decimal" value={l.price} onChange={(e) => setLine(i, 'price', e.target.value.replace(/[^\d.]/g, ''))} /></label>
+                <button type="button" className="icon-btn icon-btn--danger" onClick={() => setEdited(lines.filter((_, j) => j !== i))} aria-label={`Remove line ${i + 1}`} disabled={lines.length === 1}><Icon name="x" /></button>
+              </div>
+            ))}
+            <div className="rcpt-tools__acts">
+              <button type="button" className="act" onClick={() => setEdited([...lines, { title: '', detail: '', qty: 1, unit: '', price: 0 }])}><Icon name="plus" />Add a line</button>
+              {edited && <button type="button" className="act" onClick={() => setEdited(null)}>Back to automatic</button>}
+            </div>
+            {total !== paidAmt && <p className="rcpt-lines__warn">These lines add up to {money(total)}, but {money(paidAmt)} was paid, so the receipt shows a balance of {money(Math.max(0, total - paidAmt))}. Change the lines or the month's fee on the Fees tab.</p>}
+          </div>
+        )}
         <small>{s.parent_phone ? `Goes to ${parent || 'the parent'} · ${localPhone(s.parent_phone)}` : `No parent number yet: goes to ${s.name}'s number ${localPhone(s.phone)}.`}</small>
       </div>
 
@@ -129,7 +181,6 @@ export function ReceiptDrawer({ s, fee, month, requests, notify, onClose }) {
           <header className="rcpt__head">
             <div className="rcpt__brand">
               <p className="rcpt__logo">Kangyan<i aria-hidden="true" /></p>
-              <p>Science &amp; Maths Tuition</p>
               <p>kangyan.work</p>
               <p>kangyan1204@gmail.com</p>
             </div>
@@ -151,15 +202,14 @@ export function ReceiptDrawer({ s, fee, month, requests, notify, onClose }) {
           <table className="rcpt__table">
             <thead><tr><th>{t.desc}</th><th>{t.qty}</th><th>{t.rate}</th><th>{t.amount}</th></tr></thead>
             <tbody>
-              <tr>
-                <td>
-                  <b>{t.fee(t.month(month))}</b>
-                  <small>{s.lesson_type === 'group' ? t.groupFee : (s.subjects || []).join(', ')}</small>
-                </td>
-                <td>{hourly ? t.hrs(hours) : '1'}</td>
-                <td>{money(hourly ? s.hourly_rate || 70 : fee.amount)}</td>
-                <td>{money(fee.amount)}</td>
-              </tr>
+              {lines.map((l, i) => (
+                <tr key={i}>
+                  <td><b>{l.title}</b>{l.detail && <small>{l.detail}</small>}</td>
+                  <td>{l.unit === 'hrs' ? t.hrs(num(l.qty)) : num(l.qty)}</td>
+                  <td>{money(num(l.price))}</td>
+                  <td>{money(lineTotal(l))}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
 
@@ -169,9 +219,9 @@ export function ReceiptDrawer({ s, fee, month, requests, notify, onClose }) {
               {fee.note && <p>{t.method}: {fee.note}</p>}
             </div>
             <dl className="rcpt__totals">
-              <dt>{t.total}</dt><dd>{money(fee.amount)}</dd>
-              <dt>{t.paid}</dt><dd>{money(fee.amount)}</dd>
-              <dt className="is-due">{t.balance}</dt><dd className="is-due">{money(0)}</dd>
+              <dt>{t.total}</dt><dd>{money(total)}</dd>
+              <dt>{t.paid}</dt><dd>{money(paidAmt)}</dd>
+              <dt className="is-due">{t.balance}</dt><dd className="is-due">{money(Math.max(0, total - paidAmt))}</dd>
             </dl>
           </div>
 
