@@ -298,7 +298,7 @@ function downloadMatrix(people, slots, picks) {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-export function Schedule({ rows, slots, onOpen, notify }) {
+export function Schedule({ rows, slots, onOpen, notify, isStudent = () => false }) {
   const [stored, setMode] = useStored('kangyan-admin-schedule', 'same')
   const mode = MODES.some(([k]) => k === stored) ? stored : 'same'
   const [kind, setKind] = useState('all')
@@ -306,7 +306,8 @@ export function Schedule({ rows, slots, onOpen, notify }) {
 
   const { people, picks } = useMemo(() => {
     const people = rows
-      .filter((r) => (withClosed || r.status !== 'closed') && (kind === 'all' || typeOf(r) === kind))
+      // Enquiries already confirmed or added as students are left out (they're in My calendar now).
+      .filter((r) => (withClosed || (r.status !== 'closed' && r.status !== 'confirmed' && !isStudent(r))) && (kind === 'all' || typeOf(r) === kind))
       .sort((a, b) => (a.status === 'new' ? 0 : 1) - (b.status === 'new' ? 0 : 1) || a.student_name.localeCompare(b.student_name))
     const picks = new Map()
     for (const r of people) {
@@ -317,7 +318,7 @@ export function Schedule({ rows, slots, onOpen, notify }) {
       }
     }
     return { people, picks }
-  }, [rows, kind, withClosed])
+  }, [rows, kind, withClosed, isStudent])
 
   const sorted = sortSlots(slots)
   const groups = useMemo(() => sameTimeGroups(slots, picks), [slots, picks])
@@ -341,7 +342,7 @@ export function Schedule({ rows, slots, onOpen, notify }) {
         </select>
         <label className="adm-check">
           <input type="checkbox" checked={withClosed} onChange={(e) => setWithClosed(e.target.checked)} />
-          Include closed
+          Include closed &amp; added students
         </label>
         <div className="adm-filters__end">
           <button type="button" className="icon-btn" disabled={!people.length} onClick={() => { downloadMatrix(people, slots, picks); notify('Schedule exported') }} title="Export the student × time grid as CSV" aria-label="Export CSV">

@@ -1497,3 +1497,47 @@ button.stu-tile:focus-visible { outline: 3px solid var(--purple); outline-offset
 .acal-cancel small { font-size: .76rem; color: var(--muted); }
 .btn--danger { background: #DC2626; color: var(--white); border-color: var(--ink); }
 .btn--danger:hover { background: #B91C1C; }
+
+/* ---------- admin: fee receipt (also drawn into the PDF) ---------- */
+.rcpt-tools { display: grid; gap: 10px; margin-bottom: 14px; }
+.rcpt-tools h2 { font-size: 1.3rem; }
+.rcpt-tools .kindpick { justify-self: start; }
+.rcpt-tools__acts { display: flex; flex-wrap: wrap; gap: 8px; }
+.rcpt-tools small { font-size: .8rem; color: var(--muted); }
+.rcpt-wrap { overflow: hidden; padding: 0 0 8px; }
+.rcpt-fit { transform-origin: top left; width: max-content; }
+/* A plain, formal document: black and grey on white, one rule of the brand yellow, numbers in columns. */
+.rcpt { box-sizing: border-box; display: grid; gap: 26px; padding: 40px 44px 34px; background: #FFFFFF; color: #15121C; border: 1px solid #D9D5CC; border-top: 6px solid #15121C; font-family: var(--ff-text); font-size: 13px; line-height: 1.45; font-variant-numeric: tabular-nums; }
+.rcpt p, .rcpt dl, .rcpt dd, .rcpt h3 { margin: 0; }
+.rcpt__head { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; padding-bottom: 22px; border-bottom: 1px solid #D9D5CC; }
+.rcpt__brand { display: grid; gap: 1px; color: #5A5566; font-size: 12px; }
+.rcpt__logo { font-family: var(--ff-display); font-weight: 800; font-size: 24px; line-height: 1.25; letter-spacing: -0.02em; color: #15121C; margin-bottom: 4px !important; }
+.rcpt__logo i { display: inline-block; width: 7px; height: 7px; margin-left: 4px; vertical-align: baseline; border-radius: 50%; background: var(--yellow); }
+.rcpt__doc { text-align: right; display: grid; gap: 10px; }
+.rcpt__doc h3 { font-family: var(--ff-display); font-weight: 800; font-size: 26px; line-height: 1.2; letter-spacing: .12em; text-transform: uppercase; }
+.rcpt__doc dl { display: grid; grid-template-columns: auto auto; gap: 3px 14px; justify-content: end; font-size: 12px; }
+.rcpt__doc dt { color: #5A5566; text-align: right; }
+.rcpt__doc dd { font-weight: 600; text-align: right; }
+.rcpt__parties { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.rcpt__parties > div { display: grid; gap: 2px; }
+.rcpt__parties span, .rcpt__table th { font-size: 10.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #5A5566; }
+.rcpt__parties span { margin-bottom: 3px; }
+.rcpt__parties b { font-size: 14px; }
+.rcpt__parties small { font-size: 12px; color: #5A5566; }
+.rcpt__table { width: 100%; border-collapse: collapse; }
+.rcpt__table th { text-align: left; padding: 0 0 8px; border-bottom: 1.5px solid #15121C; }
+.rcpt__table td { padding: 12px 0; border-bottom: 1px solid #D9D5CC; vertical-align: top; }
+.rcpt__table th:not(:first-child), .rcpt__table td:not(:first-child) { text-align: right; white-space: nowrap; padding-left: 18px; }
+.rcpt__table td b { display: block; font-weight: 600; }
+.rcpt__table td small { display: block; font-size: 12px; color: #5A5566; margin-top: 2px; }
+.rcpt__bottom { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; }
+.rcpt__pay { display: grid; gap: 4px; font-size: 12px; color: #5A5566; }
+.rcpt__totals { display: grid; grid-template-columns: auto auto; row-gap: 6px; min-width: 230px; }
+.rcpt__totals dt { color: #5A5566; }
+.rcpt__totals dd { text-align: right; font-weight: 600; padding-left: 28px; }
+.rcpt__totals .is-due { margin-top: 6px; padding-top: 10px; border-top: 1.5px solid #15121C; font-weight: 800; color: #15121C; font-size: 14px; }
+.rcpt__foot { display: grid; gap: 2px; padding-top: 16px; border-top: 1px solid #D9D5CC; font-size: 11.5px; color: #5A5566; text-align: center; }
+.rcpt__foot p:first-child { color: #15121C; font-weight: 600; }
+/* Only in the copy drawn into the PDF: html2canvas sets text a little low and mis-measures
+   tabular figures (it would add gaps around "-" and "@"). */
+.rcpt--pdf { font-variant-numeric: normal; }

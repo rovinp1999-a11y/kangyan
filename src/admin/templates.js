@@ -44,6 +44,12 @@ export const TEMPLATES = [
     en: "Hi {name}! A gentle reminder that {student}'s tuition fee for {month} is RM{amount}, due {due}. Thank you!\n\nYou can see the fees on the student page: {link}",
     zh: '{name}您好！温馨提醒：{student}{month}的学费是 RM{amount}，请在{due}前缴付。谢谢！\n\n学费可以在学生页面查看：{link}',
   },
+  {
+    key: 'receipt', title: 'Receipt (to the parent)', where: 'Fees → Receipt → Send on WhatsApp',
+    vars: ['name', 'student', 'month', 'amount', 'receipt'],
+    en: "Hi {name}! Thank you for paying {student}'s tuition fee for {month} (RM{amount}). Here is the official receipt, {receipt}.",
+    zh: '{name}您好！谢谢您缴付{student}{month}的学费（RM{amount}）。附上正式收据，编号 {receipt}。',
+  },
 ]
 
 const DEFAULTS = Object.fromEntries(TEMPLATES.map((t) => [t.key, { en: t.en, zh: t.zh }]))

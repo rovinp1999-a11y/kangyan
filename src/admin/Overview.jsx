@@ -29,7 +29,7 @@ function Card({ title, sub, children, wide, legend }) {
   )
 }
 
-export function Overview({ rows, slots, onOpen, go }) {
+export function Overview({ rows, slots, onOpen, go, isStudent = () => false }) {
   const data = useMemo(() => {
     const open = rows.filter((r) => r.status !== 'closed')
     const tally = (list, keyOf) => {
@@ -70,9 +70,10 @@ export function Overview({ rows, slots, onOpen, go }) {
     const waiting = rows.filter((r) => r.status === 'new').sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
     const flexible = open.filter((r) => !r.preferred_slots.length && !r.custom_times.length).length
 
-    // Times where 2+ open enquiries at the same stage overlap: candidate group classes.
+    // Times where 2+ open enquiries at the same stage overlap: candidate group classes
+    // (not counting enquiries already confirmed or added as students).
     const picks = new Map()
-    for (const r of open) for (const p of r.preferred_slots) if (p.live) picks.set(p.id, [...(picks.get(p.id) || []), r])
+    for (const r of open.filter((x) => x.status !== 'confirmed' && !isStudent(x))) for (const p of r.preferred_slots) if (p.live) picks.set(p.id, [...(picks.get(p.id) || []), r])
     const ideas = sameTimeGroups(slots, picks)
       .flatMap((g) => g.groups.map((x) => ({ slot: g.slot, ...x })))
       .sort((a, b) => b.people.length - a.people.length)

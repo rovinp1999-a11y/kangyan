@@ -376,13 +376,13 @@ export default function AdminPage() {
               <h1>{HEAD[tab][0]}</h1>
               <p>{HEAD[tab][1]}</p>
             </div>
-            {tab === 'overview' && <Overview rows={rows} slots={slots} onOpen={setOpenId} go={go} />}
+            {tab === 'overview' && <Overview rows={rows} slots={slots} onOpen={setOpenId} go={go} isStudent={studentOf} />}
             {tab === 'enquiries' && <EnquiriesTab rows={rows} actions={actions} onOpen={setOpenId} onMakeStudent={makeStudent} onEdit={editEnquiry} studentOf={studentOf} onViewStudent={editStudent} notify={notify} filter={enqFilter} setFilter={setEnqFilter} />}
             {tab === 'students' && <StudentsTab students={students} setStudents={setStudents} requests={requests} setRequests={setRequests} slots={slots} refreshSlots={refreshSlots} prefill={prefill} clearPrefill={clearPrefill} onCreated={(s) => s.enquiry_id && setEnquiries((rs) => rs.map((r) => (r.id === s.enquiry_id ? { ...r, status: 'confirmed' } : r)))} notify={notify} onAuthError={logout} />}
             {tab === 'fees' && <FeesTab students={students} requests={requests} fees={fees} setFees={setFees} notify={notify} onAuthError={logout} />}
             {tab === 'news' && <AnnouncementsTab announcements={announcements} setAnnouncements={setAnnouncements} students={students} notify={notify} onAuthError={logout} />}
             {tab === 'templates' && <TemplatesTab notify={notify} onAuthError={logout} />}
-            {tab === 'schedule' && <Schedule rows={rows} slots={slots} onOpen={setOpenId} notify={notify} />}
+            {tab === 'schedule' && <Schedule rows={rows} slots={slots} onOpen={setOpenId} notify={notify} isStudent={studentOf} />}
             {tab === 'calendar' && <AdminCalendar slots={slots} setSlots={setSlots} students={students} setStudents={setStudents} requests={requests} setRequests={setRequests} refreshSlots={refreshSlots} notify={notify} onAuthError={logout} onEditStudent={editStudent} />}
             {tab === 'slots' && <SlotsTab slots={slots} setSlots={setSlots} enquiries={rows} students={students} onAuthError={logout} notify={notify} onOpen={setOpenId} />}
           </>

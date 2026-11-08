@@ -112,12 +112,14 @@ export default function WeekCalendar({ days, week, weeks, back = 0, onWeek, sele
     </button>
   )
 
-  // Open scrolled to the first entry of the week (or 8 AM), like a calendar app.
+  // Open scrolled to the earliest class of the week, so every class that week is in view
+  // (or 4 PM when the week is empty), like a calendar app.
   const scroller = useRef(null)
-  const firstAt = Math.min(8 * 60, ...all.map((e) => toMin(e.start)))
+  const inView = narrow ? (days[day] || days[0]).events : all // on phones, the day being shown
+  const firstAt = inView.length ? Math.min(...inView.map((e) => toMin(e.start))) : 16 * 60
   useEffect(() => {
     if (scroller.current) scroller.current.scrollTop = Math.max(0, ((firstAt - lo * 60) / 60 - 0.5) * ROW)
-  }, [week, narrow]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [week, narrow, day, firstAt]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const grid = (shown) => (
     <div className="wc__scroll" ref={scroller}>

@@ -6,6 +6,7 @@ import { addDays, todayMY } from '../../shared/lessons.js'
 import { suggestedFee, feeState, monthOf } from '../../shared/schedule.js'
 import { Icon, KIND_SHORT, STUDENT_KIND, api, waLink } from './lib.jsx'
 import { fill } from './templates.js'
+import { ReceiptDrawer } from './Receipt.jsx'
 
 const SITE = 'https://kangyan.work/student'
 const MONTHS_EN = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
@@ -19,6 +20,7 @@ export function FeesTab({ students, requests, fees, setFees, notify, onAuthError
   const [month, setMonth] = useState(monthOf(todayMY()))
   const [busy, setBusy] = useState(null)
   const [drafts, setDrafts] = useState({}) // student id → amount being typed
+  const [receipt, setReceipt] = useState(null) // the paid row whose receipt is open
   const fail = (e) => (e.unauthorized ? onAuthError() : notify(e.message, 'error'))
 
   const rows = useMemo(() => students
@@ -104,6 +106,7 @@ export function FeesTab({ students, requests, fees, setFees, notify, onAuthError
               </label>
               <span className={`fee__state fee__state--${r.state}`}>{STATE[r.state]}</span>
               <div className="fee__acts">
+                {r.state === 'paid' && r.saved && <button type="button" className="btn btn--accent btn--sm" onClick={() => setReceipt(r)}><Icon name="note" />Receipt</button>}
                 {r.state === 'paid'
                   ? <button type="button" className="act" disabled={busy === r.s.id} onClick={() => save(r, { paid: false })}>Mark unpaid</button>
                   : <button type="button" className="btn btn--accent btn--sm" disabled={busy === r.s.id || r.amount == null} onClick={() => save(r, { paid: true, amount: r.amount })}><Icon name="check" />Mark paid</button>}
@@ -118,6 +121,7 @@ export function FeesTab({ students, requests, fees, setFees, notify, onAuthError
           ))}
         </div>
       )}
+      {receipt && <ReceiptDrawer s={receipt.s} fee={receipt.saved} month={month} requests={requests} notify={notify} onClose={() => setReceipt(null)} />}
     </div>
   )
 }
