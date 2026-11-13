@@ -11,6 +11,7 @@
 //   POST { action: 'cancelLesson', studentId, lessonDate, lessonStart }              → tutor cancels one lesson
 //   POST { action: 'endSeries', studentId, lessonDate, lessonStart }   → cancel this and all following lessons (the weekly lesson stops)
 //   POST { action: 'moveSeries', studentId, lessonDate, lessonStart, toDate, toStart, toEnd } → this and all following lessons
+//   POST { action: 'setBreaks', studentId, breaks: [{ from, until, note }] } → lessons paused between those dates
 //   POST { action: 'addLesson', studentId, date, start, end, kind, weekly? } → an extra class on that date (or weekly from it)
 //   POST { action: 'setFee', studentId, month, amount (null = use suggestion), paid, note }  → one month's fee
 //   POST { action: 'announce', title, body, audience, studentId?, until? } / { action: 'unannounce', id }
@@ -32,7 +33,7 @@ import { isDate, weekdayOf, dateLabel, covers, addDays, todayMY, kindOf, typeOf 
 
 const STUDENT_COLUMNS = `s.id, s.created_at, s.name, s.phone, s.level, s.lesson_type, s.subjects, s.lessons, s.hourly_rate,
   s.school, to_char(s.birthday, 'YYYY-MM-DD') AS birthday, s.email, s.address, s.parent_name, s.parent_relation, s.parent_phone,
-  to_char(s.start_date, 'YYYY-MM-DD') AS start_date, s.active, s.enquiry_id, s.lang, s.notes, s.last_login`
+  to_char(s.start_date, 'YYYY-MM-DD') AS start_date, s.active, s.enquiry_id, s.lang, s.notes, s.last_login, s.breaks`
 const REQUEST_COLUMNS = `r.id, r.created_at, r.student_id, r.kind, to_char(r.lesson_date, 'YYYY-MM-DD') AS lesson_date, r.from_lesson,
   r.to_slot_id, to_char(r.to_date, 'YYYY-MM-DD') AS to_date, r.to_weekday, r.to_start, r.to_end, r.to_label, r.recording, r.note, r.status, r.reply, r.decided_at, r.by_tutor`
 const str = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '')
@@ -301,6 +302,24 @@ export default async function handler(req, res) {
       await syncSlots(sql, s, after)
       const cleared = await clearOrphans(sql, after)
       return send(res, 200, { ok: true, student: after, cleared })
+    }
+
+    if (b.action === 'setBreaks') {
+      // Breaks pause a student's lessons from one date to another (no lessons, no fee); their
+      // weekly lessons and the enquiry slots are left as they are.
+      const sid = Number(b.studentId)
+      if (!isDbId(sid)) return fail(res, 400, 'Invalid student')
+      const list = Array.isArray(b.breaks) ? b.breaks.slice(0, 30) : []
+      const breaks = []
+      for (const x of list) {
+        if (!isDate(x?.from) || !isDate(x?.until) || x.until < x.from) return fail(res, 400, 'Check the break dates (the end must be on or after the start)')
+        breaks.push({ from: x.from, until: x.until, ...(str(x.note, 120) ? { note: str(x.note, 120) } : {}) })
+      }
+      breaks.sort((p, q) => p.from.localeCompare(q.from))
+      await sql`UPDATE students SET breaks = ${JSON.stringify(breaks)}::jsonb WHERE id = ${sid}`
+      const after = await getStudent(sql, sid)
+      if (!after) return fail(res, 404, 'Student not found')
+      return send(res, 200, { ok: true, student: after })
     }
 
     if (b.action === 'addLesson') {

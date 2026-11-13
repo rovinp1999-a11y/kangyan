@@ -3,12 +3,12 @@
 // (open / taken) live on their own tab. Tap an entry for details and quick actions.
 import { useMemo, useState } from 'react'
 import { WEEKDAYS, SLOT_KIND_LABEL } from '../../shared/constants.js'
-import { dateLabel, todayMY, weekdayOf, covers, kindOf } from '../../shared/lessons.js'
+import { dateLabel, todayMY, weekdayOf, covers, kindOf, onBreak } from '../../shared/lessons.js'
 import { shortRange } from '../i18n.jsx'
 import WeekCalendar, { weekDates } from '../components/WeekCalendar.jsx'
 import TimeSelect from '../components/TimeSelect.jsx'
 import { Icon, KIND_SHORT, api, waLink } from './lib.jsx'
-import { Decide, askedTime } from './Students.jsx'
+import { Decide, askedTime, BreakPanel, saveBreaksFor } from './Students.jsx'
 
 const WEEKS = 8
 const WEEKS_BACK = 26 // how far back My calendar can go
@@ -19,7 +19,7 @@ const range = (a, b) => shortRange(a, b, 'en')
 function peopleFor(date, match, students, requests) {
   const out = []
   for (const s of students) {
-    if (!s.active || (s.start_date && date < s.start_date)) continue
+    if (!s.active || (s.start_date && date < s.start_date) || onBreak(s, date)) continue // on a break: not in the calendar
     for (const l of (s.lessons || []).filter((x) => match(x) && covers(x, date))) {
       const r = requests.find((x) => x.student_id === s.id && x.lesson_date === date && x.kind !== 'change' && ACTIVE.includes(x.status) && (!x.from_lesson || x.from_lesson.start === l.start))
       const state = !r ? 'regular' : r.kind === 'absence' ? (r.status === 'approved' ? 'absent' : 'absentAsk') : (r.status === 'approved' ? 'movedOut' : 'moveOutAsk')
@@ -127,7 +127,7 @@ function CancelChoice({ who, date, weekly, many, busy, onOnce, onFollowing, onCl
 /** The weekly lesson an entry stands for: the original one for moved lessons. */
 const origOf = (p, date) => (p.r ? { date: p.r.lesson_date, start: p.r.from_lesson?.start, end: p.r.from_lesson?.end } : { date, start: p.l.start, end: p.l.end })
 
-function Detail({ ev, slots, onDecide, onEdit, onMove, onMoveSeries, onCancelLesson, onEndSeries, onUndo, onAdd, onMoveClass, dropped }) {
+function Detail({ ev, slots, onDecide, onEdit, onMove, onMoveSeries, onCancelLesson, onEndSeries, onUndo, onAdd, onMoveClass, onBreaks, dropped }) {
   // Whose lesson is being moved ('all' = the whole class); a drag opens it straight away at the dropped time.
   const [picking, setPicking] = useState(!dropped ? null : dropped.list.length > 1 ? 'all' : `${dropped.list[0].s.id}-${dropped.list[0].state}-${dropped.list[0].r?.id || ''}`)
   const [busy, setBusy] = useState(false)
@@ -200,8 +200,10 @@ function Detail({ ev, slots, onDecide, onEdit, onMove, onMoveSeries, onCancelLes
                         {date < todayMY()
                           ? <button type="button" className="act" disabled={busy} onClick={() => act(() => onCancelLesson(p.s, orig, true))}>Mark absent</button>
                           : <button type="button" className="act" disabled={busy} onClick={() => setCancelling(cancelling === key ? null : key)}>Cancel…</button>}
+                        {date >= todayMY() && <button type="button" className="act" onClick={() => setCancelling(cancelling === `pause-${key}` ? null : `pause-${key}`)}><Icon name="clock" />Pause…</button>}
                       </>
                     )}
+                    {cancelling === `pause-${key}` && <BreakPanel s={p.s} from={date} onSave={async (st, list) => { const done = await onBreaks(st, list); if (done) setCancelling(null); return done }} />}
                     {cancelling === key && (
                       <CancelChoice who={`${p.s.name.split(/\s+/)[0]}'s lesson`} date={date} busy={busy} weekly={!p.l?.once}
                         onOnce={() => act(() => onCancelLesson(p.s, orig))} onFollowing={() => act(() => onEndSeries(p.s, orig))} onClose={() => setCancelling(null)} />
@@ -402,7 +404,7 @@ export function AdminCalendar({ slots, setSlots, students, setStudents, requests
         labels={{ prev: 'Previous week', next: 'Next week', today: 'This week', empty: 'Nothing on this day.', ask: '+ Add a class on this day', hour: (h) => `${h % 12 || 12}${h < 12 ? 'am' : 'pm'}` }}
       />
       {draft ? <DraftClass draft={draft} setDraft={setDraft} students={students} onSave={addLesson} onCancel={() => setDraft(null)} />
-        : picked ? <Detail key={`${picked.key}-${dropped ? dropped.t.date + dropped.t.start : ''}`} ev={picked} slots={slots} dropped={dropped && picked.info.movable === dropped.list ? dropped : null} onDecide={decide} onEdit={onEditStudent} onMove={move} onMoveSeries={moveSeries} onCancelLesson={cancelLesson} onEndSeries={endSeries} onUndo={undo} onMoveClass={moveClass}
+        : picked ? <Detail key={`${picked.key}-${dropped ? dropped.t.date + dropped.t.start : ''}`} ev={picked} slots={slots} dropped={dropped && picked.info.movable === dropped.list ? dropped : null} onDecide={decide} onEdit={onEditStudent} onMove={move} onMoveSeries={moveSeries} onCancelLesson={cancelLesson} onEndSeries={endSeries} onUndo={undo} onMoveClass={moveClass} onBreaks={(s, list) => saveBreaksFor(s, list, setStudents, notify, fail)}
           onAdd={(date, start, end) => { startDraft({ date }, start); setDraft((x) => ({ ...x, end })) }} />
         : <p className="acal__hint">Click any empty time to add a class there, then pick the student. Only your classes with confirmed students show here; this is the schedule they see as “occupied”. Drag a lesson to a new time (on a computer), or tap it and choose Move. You'll be asked whether it's only this lesson or this and all following lessons. Open enquiry slots are on the Enquiry slots tab.</p>}
     </section>

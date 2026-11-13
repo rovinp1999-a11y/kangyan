@@ -12,7 +12,8 @@ import { addDays } from '../../shared/lessons.js'
 //   week: 0 = this week; `back` earlier weeks (negative `week`) and `weeks` weeks from this one can be shown
 //   onEmpty(day, 'HH:MM' | null), optional: tapping an empty part of a day (rounded to the half hour)
 //   onDrag(event, day, 'HH:MM'), optional: entries with `drag: true` can be dragged on the time grid
-//     (snaps to half hours, keeps the length); a short tap still selects them
+//     (snaps to half hours, keeps the length); a short tap still selects them. On touch screens an
+//     entry is picked up by holding it for half a second (a quick swipe still scrolls)
 
 const ROW = 44 // px per hour on the time grid
 const toMin = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
@@ -78,23 +79,57 @@ export default function WeekCalendar({ days, week, weeks, back = 0, onWeek, sele
   }
   useEffect(() => {
     if (!drag) return
-    const move = (ev) => {
-      const dx = ev.clientX - drag.x0
-      const dy = ev.clientY - drag.y0
-      setDrag((g) => g && { ...g, dx, dy, moved: g.moved || Math.abs(dx) + Math.abs(dy) > 6, x: ev.clientX })
+    const move = (x, y) => {
+      const dx = x - drag.x0
+      const dy = y - drag.y0
+      setDrag((g) => g && { ...g, dx, dy, moved: g.moved || Math.abs(dx) + Math.abs(dy) > 6, x })
     }
-    const up = (ev) => {
+    const drop = (x, y) => {
       const g = dragRef.current
       setDrag(null)
       if (!g?.moved) return
       dragged.current = true
-      const at = landing({ ...g, dy: ev.clientY - g.y0 }, ev.clientX)
+      setTimeout(() => { dragged.current = false }, 400) // a touch drag may not be followed by a click
+      const at = landing({ ...g, dy: y - g.y0 }, x)
       if (at && !days[at.i].past && (days[at.i].date !== g.d.date || at.start !== g.e.start)) onDrag(g.e, days[at.i], at.start)
     }
-    window.addEventListener('pointermove', move)
-    window.addEventListener('pointerup', up, { once: true })
-    return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up) }
+    if (drag.touch) {
+      // Held on a touch screen: follow the finger and keep the page from scrolling meanwhile.
+      const tmove = (ev) => { ev.preventDefault(); move(ev.touches[0].clientX, ev.touches[0].clientY) }
+      const tend = (ev) => drop(ev.changedTouches[0].clientX, ev.changedTouches[0].clientY)
+      window.addEventListener('touchmove', tmove, { passive: false })
+      window.addEventListener('touchend', tend, { once: true })
+      window.addEventListener('touchcancel', () => setDrag(null), { once: true })
+      return () => { window.removeEventListener('touchmove', tmove); window.removeEventListener('touchend', tend) }
+    }
+    const pmove = (ev) => move(ev.clientX, ev.clientY)
+    const pup = (ev) => drop(ev.clientX, ev.clientY)
+    window.addEventListener('pointermove', pmove)
+    window.addEventListener('pointerup', pup, { once: true })
+    return () => { window.removeEventListener('pointermove', pmove); window.removeEventListener('pointerup', pup) }
   }, [drag?.e.key]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Touch: hold an entry for half a second to pick it up; moving or lifting sooner is a scroll or a tap.
+  const hold = useRef(null)
+  const holdStart = (e, d) => (ev) => {
+    const t = ev.touches[0]
+    const at = { x: t.clientX, y: t.clientY }
+    clearTimeout(hold.current?.timer)
+    hold.current = {
+      at,
+      timer: setTimeout(() => {
+        hold.current = null
+        navigator.vibrate?.(25)
+        setDrag({ e, d, x0: at.x, y0: at.y, dx: 0, dy: 0, moved: true, touch: true })
+      }, 500),
+    }
+  }
+  const holdMove = (ev) => {
+    const h = hold.current
+    const t = ev.touches[0]
+    if (h && Math.abs(t.clientX - h.at.x) + Math.abs(t.clientY - h.at.y) > 10) { clearTimeout(h.timer); hold.current = null }
+  }
+  const holdEnd = () => { if (hold.current) { clearTimeout(hold.current.timer); hold.current = null } }
 
   const chip = (e, d, style) => (
     <button
@@ -104,6 +139,10 @@ export default function WeekCalendar({ days, week, weeks, back = 0, onWeek, sele
       style={drag?.e.key === e.key && drag.moved ? { ...style, transform: `translate(${drag.dx}px, ${drag.dy}px)`, zIndex: 5 } : style}
       aria-pressed={selected === e.key}
       onPointerDown={e.drag && onDrag && style ? (ev) => { if (ev.button === 0 && ev.pointerType !== 'touch') setDrag({ e, d, x0: ev.clientX, y0: ev.clientY, dx: 0, dy: 0, moved: false }) } : undefined}
+      onTouchStart={e.drag && onDrag && style ? holdStart(e, d) : undefined}
+      onTouchMove={e.drag && onDrag && style ? holdMove : undefined}
+      onTouchEnd={e.drag && onDrag && style ? holdEnd : undefined}
+      onContextMenu={e.drag && onDrag ? (ev) => ev.preventDefault() : undefined}
       onClick={() => { if (dragged.current) { dragged.current = false; return } onSelect(e, d) }}
     >
       <span className="wc__ev-t">{e.title}</span>

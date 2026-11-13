@@ -320,8 +320,72 @@ function StudentForm({ initial, slots, onSave, onCancel, busy }) {
   )
 }
 
+const monthEnd = (d) => addDays(`${addDays(`${d.slice(0, 7)}-28`, 4).slice(0, 7)}-01`, -1)
+/** The break going on now or the next one coming (for labels like "On break · back 5 Jan"). */
+export const currentBreak = (s, today = todayMY()) => (s.breaks || []).find((b) => b.until >= today) || null
+export const breakLabel = (b, today = todayMY()) => (b.from <= today ? `On break · back ${dateLabel(addDays(b.until, 1))}` : `Break from ${dateLabel(b.from)}`)
+
+/**
+ * Pause a student's lessons from one date to another: no lessons (so the time is free for other
+ * classes) and no fee for those dates. Lists their breaks with End early / Remove.
+ */
+export function BreakPanel({ s, from: startFrom, onSave }) {
+  const today = todayMY()
+  const [open, setOpen] = useState(!!startFrom)
+  const [from, setFrom] = useState(startFrom || today)
+  const [until, setUntil] = useState(monthEnd(startFrom || today))
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const breaks = (s.breaks || []).filter((b) => b.until >= today)
+  const nextMonth = addDays(monthEnd(today), 1)
+  const ok = from && until && until >= from
+  const save = async (list) => { setBusy(true); const done = await onSave(s, list); setBusy(false); return done }
+  const add = async () => { if (ok && await save([...(s.breaks || []), { from, until, note }])) { setOpen(false); setNote('') } }
+  // Ending early: lessons start again tomorrow (a break that hasn't started yet is just removed).
+  const endEarly = (b) => save((s.breaks || []).flatMap((x) => (x !== b ? [x] : b.from < today ? [{ ...b, until: addDays(today, -1) }] : [])))
+  return (
+    <div className="brk">
+      {breaks.map((b) => (
+        <div className="brk__item" key={`${b.from}-${b.until}`}>
+          <span><b>{dateLabel(b.from)} – {dateLabel(b.until)}</b>{b.note && <small>{b.note}</small>}<small>{b.from <= today ? `On break now · lessons start again ${dateLabel(addDays(b.until, 1))}` : 'Coming up'}</small></span>
+          <button type="button" className="act" disabled={busy} onClick={() => endEarly(b)}>{b.from <= today ? 'End early' : 'Remove'}</button>
+        </div>
+      ))}
+      {open ? (
+        <div className="brk__form">
+          <div className="brk__quick">
+            <button type="button" className="act" onClick={() => { setFrom(today); setUntil(monthEnd(today)) }}>Rest of this month</button>
+            <button type="button" className="act" onClick={() => { setFrom(nextMonth); setUntil(monthEnd(nextMonth)) }}>Next month</button>
+          </div>
+          <div className="brk__dates">
+            <label><span>From</span><input type="date" value={from} min={today} onChange={(e) => { setFrom(e.target.value); if (until < e.target.value) setUntil(e.target.value) }} /></label>
+            <label><span>To</span><input type="date" value={until} min={from} onChange={(e) => setUntil(e.target.value)} /></label>
+          </div>
+          <label className="brk__note"><span>Note (optional)</span><input value={note} maxLength={120} placeholder="e.g. Exams, family trip" onChange={(e) => setNote(e.target.value)} /></label>
+          {ok && <p className="brk__preview">No lessons and no fee from {dateLabel(from)} to {dateLabel(until)}. Lessons start again {dateLabel(addDays(until, 1))}. Their time is free for other classes meanwhile.</p>}
+          <div className="acal-pick__acts">
+            <button type="button" className="btn btn--accent btn--sm" disabled={!ok || busy} onClick={add}>{busy ? 'Saving…' : 'Pause lessons'}</button>
+            <button type="button" className="act" onClick={() => setOpen(false)}>Cancel</button>
+          </div>
+        </div>
+      ) : <button type="button" className="act" onClick={() => setOpen(true)}><Icon name="clock" />Pause lessons for a while</button>}
+    </div>
+  )
+}
+
+/** Save a student's breaks; returns true when saved (used by the profile and My calendar). */
+export async function saveBreaksFor(s, breaks, setStudents, notify, fail) {
+  try {
+    const { student } = await api('/api/admin/students', { method: 'POST', body: { action: 'setBreaks', studentId: s.id, breaks } })
+    setStudents((list) => list.map((x) => (x.id === student.id ? student : x)))
+    const b = currentBreak(student)
+    notify(b ? `${s.name}: ${breakLabel(b)}` : `${s.name}: no breaks coming up`)
+    return true
+  } catch (e) { fail(e); return false }
+}
+
 /** Everything about one student, opened from their row. */
-function StudentProfile({ s, waiting, pin, onEdit, onShowPin, onNewPin, onSendLogin, onActive, onDelete }) {
+function StudentProfile({ s, waiting, pin, onEdit, onShowPin, onNewPin, onSendLogin, onActive, onDelete, onBreaks }) {
   const lessons = lessonsNow(s)
   const Row = ({ k, children }) => (children ? <><dt>{k}</dt><dd>{children}</dd></> : null)
   return (
@@ -352,6 +416,11 @@ function StudentProfile({ s, waiting, pin, onEdit, onShowPin, onNewPin, onSendLo
           </p>
         )) : <p className="scard__slot is-none"><Icon name="calendar" />No lessons coming up</p>}
         {s.lesson_type !== 'group' && <p className="sprof__small">Hourly rate RM{s.hourly_rate || 70}{s.hourly_rate ? '' : ' (default)'}{s.lesson_type === 'both' ? ', group lessons included' : ''}</p>}
+      </section>
+
+      <section className="sprof__sec">
+        <h3>Breaks</h3>
+        <BreakPanel s={s} onSave={onBreaks} />
       </section>
 
       <section className="sprof__sec">
@@ -432,7 +501,7 @@ export function StudentsTab({ students, setStudents, requests, setRequests, slot
   const history = requests.filter((r) => r.status !== 'pending').slice(0, 40)
   const needle = q.trim().toLowerCase()
   const shown = students
-    .filter((s) => (show === 'all' || (show === 'active') === s.active) && (!kind || s.lesson_type === kind || (s.lesson_type === 'both' && kind !== 'both')))
+    .filter((s) => (show === 'all' || (show === 'break' ? s.active && currentBreak(s) : (show === 'active') === s.active)) && (!kind || s.lesson_type === kind || (s.lesson_type === 'both' && kind !== 'both')))
     .filter((s) => !needle || [s.name, s.phone, localPhone(s.phone), s.level, s.school, s.parent_name, s.parent_phone, localPhone(s.parent_phone), ...(s.subjects || [])]
       .filter(Boolean).some((v) => v.toLowerCase().includes(needle)))
   const open = openId != null ? byId.get(openId) : null
@@ -494,6 +563,7 @@ export function StudentsTab({ students, setStudents, requests, setRequests, slot
       setPins((m) => ({ ...m, [s.id]: p }))
     } catch (e) { fail(e) }
   }
+  const saveBreaks = (s, breaks) => saveBreaksFor(s, breaks, setStudents, notify, fail)
   const setActive = async (s, active) => {
     try {
       const { student } = await api('/api/admin/students', { method: 'POST', body: { action: 'update', id: s.id, active } })
@@ -551,7 +621,7 @@ export function StudentsTab({ students, setStudents, requests, setRequests, slot
           <div className="adm-filters">
             <label className="adm-search"><Icon name="search" /><input type="search" placeholder="Search name, school, parent, phone" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search students" /></label>
             <select className="adm-select" value={show} onChange={(e) => setShow(e.target.value)} aria-label="Show">
-              <option value="active">Active</option><option value="off">Deactivated</option><option value="all">All students</option>
+              <option value="active">Active</option><option value="break">On break</option><option value="off">Deactivated</option><option value="all">All students</option>
             </select>
             <select className="adm-select" value={kind} onChange={(e) => setKind(e.target.value)} aria-label="Class">
               <option value="">1-to-1 &amp; group</option><option value="private">{KIND_SHORT.private}</option><option value="group">{KIND_SHORT.group}</option><option value="both">Both</option>
@@ -577,6 +647,7 @@ export function StudentsTab({ students, setStudents, requests, setRequests, slot
                     <span className="srow__name">
                       <b>{s.name}{waiting > 0 && <span className="badge" title="Requests waiting">{waiting}</span>}</b>
                       <small>{[s.level, STUDENT_KIND[s.lesson_type], (s.subjects || []).join(', ')].filter(Boolean).join(' · ')}</small>
+                      {currentBreak(s) && <span className="brk__chip">{breakLabel(currentBreak(s))}</span>}
                     </span>
                   </span>
                   <span className="srow__lessons" role="cell">
@@ -627,6 +698,7 @@ export function StudentsTab({ students, setStudents, requests, setRequests, slot
             s={open} waiting={pending.filter((r) => r.student_id === open.id).length} pin={pins[open.id]}
             onEdit={() => setForm(formFromStudent(open))} onShowPin={() => showPin(open)} onNewPin={() => resetPin(open)}
             onSendLogin={() => sendLogin(open)} onActive={() => setActive(open, !open.active)} onDelete={() => remove(open)}
+            onBreaks={saveBreaks}
           />
         </Drawer>
       )}

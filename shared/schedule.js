@@ -1,6 +1,6 @@
 // Every lesson a student has between two dates and what happened to it, plus the monthly
 // fee suggestion. Shared by the API (student page, phone calendar) and the admin.
-import { covers, addDays, todayMY, startsAt, kindOf } from './lessons.js'
+import { covers, addDays, todayMY, startsAt, kindOf, onBreak } from './lessons.js'
 import { GROUP_FEE, PRIVATE_FEE_FROM, feeStage } from './constants.js'
 
 const toMin = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
@@ -19,7 +19,7 @@ export function occurrences(student, requests, from, to) {
   const out = []
   for (const l of student.lessons || []) {
     for (let d = from; d <= to; d = addDays(d, 1)) {
-      if (!covers(l, d) || (student.start_date && d < student.start_date)) continue
+      if (!covers(l, d) || (student.start_date && d < student.start_date) || onBreak(student, d)) continue // on a break: no lesson
       const r = done.find((x) => x.kind !== 'change' && x.lesson_date === d && (!x.from_lesson || x.from_lesson.start === l.start))
       const status = !r ? 'lesson' : r.kind === 'reschedule' ? 'moved' : r.by_tutor ? 'cancelled' : 'absent'
       out.push({ date: d, start: l.start, end: l.end, kind: kindOf(l, student), status, request: r || null })
@@ -50,8 +50,14 @@ export const monthOf = (date) => date.slice(0, 7)
  * not the group fee. Returns null when there is nothing to suggest (e.g. level 'Other').
  */
 export function suggestedFee(student, requests, month) {
-  if (student.lesson_type === 'group') return GROUP_FEE[feeStage(student.level)] ?? null
   const [a, b] = monthRange(month)
+  if (student.lesson_type === 'group') {
+    const fee = GROUP_FEE[feeStage(student.level)] ?? null
+    if (fee == null || !(student.breaks || []).length) return fee
+    // On a break they pay nothing: the monthly fee shrinks with the lessons the break takes out.
+    const planned = occurrences({ ...student, breaks: [] }, requests, a, b).length
+    return planned ? Math.round((fee * occurrences(student, requests, a, b).length) / planned) : fee
+  }
   const mins = occurrences(student, requests, a, b)
     .filter((o) => o.status === 'lesson' || o.status === 'absent')
     .reduce((n, o) => n + toMin(o.end) - toMin(o.start), 0)

@@ -51,6 +51,9 @@ export function upcomingDates(slot, { from, weeks = WEEKS_AHEAD, now = Date.now(
  */
 export const kindOf = (l, student) => (l?.kind === 'group' || l?.kind === 'private' ? l.kind : student?.lesson_type === 'group' ? 'group' : 'private')
 
+/** Is the student on a break (lessons paused) on `date`? Breaks are { from, until, note? }, both dates included. */
+export const onBreak = (student, date) => (student?.breaks || []).some((b) => date >= b.from && date <= b.until)
+
 /** The student's overall type from the weekly lessons still going: 'private', 'group' or 'both'. */
 export function typeOf(lessons, fallback = 'private', today = todayMY()) {
   const kinds = new Set((lessons || []).filter((l) => !l.until || l.until >= today).map((l) => kindOf(l, { lesson_type: fallback })))

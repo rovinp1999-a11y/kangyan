@@ -834,6 +834,14 @@ export default function StudentPage() {
                 )}
               </div>
 
+              {/* A break going on now or coming up: lessons paused between the dates. */}
+              {(tab === 'home' || tab === 'calendar') && (st.breaks || []).slice(0, 1).map((b) => (
+                <section key={b.from} className="stu-news stu-news--break" role="note">
+                  <b><Icon name="clock" />{b.from <= st.today ? T.brk.now(dateLabel(addDays(b.until, 1), lang)) : T.brk.soon(dateLabel(b.from, lang), dateLabel(b.until, lang))}</b>
+                  <p>{T.brk.p}</p>
+                </section>
+              ))}
+
               {tab === 'home' && st.announcements?.map((a) => (
                 <section key={a.id} className="stu-news" role="note">
                   <b><Icon name="megaphone" />{a.title}</b>

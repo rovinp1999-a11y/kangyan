@@ -154,6 +154,8 @@ const statements = [
   `ALTER TABLE students ADD COLUMN IF NOT EXISTS parent_name TEXT`,
   `ALTER TABLE students ADD COLUMN IF NOT EXISTS parent_relation TEXT`,
   `ALTER TABLE students ADD COLUMN IF NOT EXISTS parent_phone TEXT`,
+  // Breaks: lessons paused from one date to another, [{ from, until, note }].
+  `ALTER TABLE students ADD COLUMN IF NOT EXISTS breaks JSONB NOT NULL DEFAULT '[]'::jsonb`,
   // Each weekly lesson is 1-to-1 or group; a student with both is 'both'.
   `ALTER TABLE students DROP CONSTRAINT IF EXISTS students_lesson_type_check`,
   `ALTER TABLE students ADD CONSTRAINT students_lesson_type_check CHECK (lesson_type IN ('private','group','both'))`,

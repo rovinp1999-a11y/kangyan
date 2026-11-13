@@ -13,7 +13,7 @@ import { normalPhone, isPin, checkPin, hashPin, encryptPin, issueStudentToken, r
 import { notify } from './_notify.js'
 import { randomBytes } from 'node:crypto'
 import { occurrences, monthRange, monthOf, suggestedFee, monthProgress, feeState } from '../shared/schedule.js'
-import { NOTICE_HOURS, WEEKS_AHEAD, hoursUntil, todayMY, isDate, weekdayOf, startsAt, dateLabel, addDays, covers, kindOf } from '../shared/lessons.js'
+import { NOTICE_HOURS, WEEKS_AHEAD, hoursUntil, todayMY, isDate, weekdayOf, startsAt, dateLabel, addDays, covers, kindOf, onBreak } from '../shared/lessons.js'
 
 const MAX_FAILS = 8
 const WINDOW_MIN = 15
@@ -61,7 +61,7 @@ const span = (a, b) => `${hm(a)}–${hm(b)}`
  * weekly lessons, minus approved absences and moves away, plus lessons moved in.
  */
 async function occupied(sql, me, dates) {
-  const others = await sql`SELECT id, lessons, to_char(start_date, 'YYYY-MM-DD') AS start_day FROM students WHERE active AND id <> ${me}`
+  const others = await sql`SELECT id, lessons, breaks, to_char(start_date, 'YYYY-MM-DD') AS start_day FROM students WHERE active AND id <> ${me}`
   const reqs = await sql.query(`SELECT student_id, kind, status, to_char(lesson_date, 'YYYY-MM-DD') AS lesson_date, from_lesson,
       to_char(to_date, 'YYYY-MM-DD') AS to_date, to_start, to_end
     FROM student_requests WHERE student_id <> $1 AND status = ANY($2) AND (lesson_date >= $3::date OR to_date >= $3::date)`, [me, ACTIVE, dates[0]])
@@ -69,7 +69,7 @@ async function occupied(sql, me, dates) {
   for (const o of others) {
     for (const l of o.lessons || []) {
       for (const date of dates) {
-        if (!covers(l, date) || (o.start_day && date < o.start_day)) continue
+        if (!covers(l, date) || (o.start_day && date < o.start_day) || onBreak(o, date)) continue // on a break: that time is free
         const gone = reqs.some((r) => r.student_id === o.id && r.status === 'approved' && r.kind !== 'change' && r.lesson_date === date && (!r.from_lesson || r.from_lesson.start === l.start))
         if (!gone) out.push({ date, start: l.start, end: l.end })
       }
@@ -173,7 +173,9 @@ async function state(sql, s) {
     profile: await profileOf(sql, s.id),
     history, progress: monthProgress(stu, requests), fees, announcements: news, calendarToken: await calendarToken(sql, s),
     weekly: weekly.map((w) => ({ weekday: w.weekday, start: w.start, end: w.end, kind: kindOf(w, s), from: w.from || null, until: w.until || null })),
-    lessons, requests, noticeHours: NOTICE_HOURS, weeksAhead: WEEKS_AHEAD, weeksBack: WEEKS_BACK, today, lastDay: dates[dates.length - 1], startDay: startDay || null,
+    lessons, requests, noticeHours: NOTICE_HOURS, weeksAhead: WEEKS_AHEAD, weeksBack: WEEKS_BACK,
+    // Breaks still to come or going on now (lessons paused between the dates).
+    breaks: (s.breaks || []).filter((x) => x.until >= today).map(({ from, until }) => ({ from, until })), today, lastDay: dates[dates.length - 1], startDay: startDay || null,
     // Other confirmed students' lessons, shown only as "occupied" (never who).
     busy: await occupied(sql, s.id, dates),
   }

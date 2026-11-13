@@ -81,6 +81,11 @@ export const S = {
     noRequests: 'No requests yet.',
     kinds: { reschedule: 'Move one lesson', absence: 'Absence', change: 'This and all following lessons' },
     everyFrom: (day, time, from) => `every ${day} ${time}${from ? `, from ${from}` : ''}`,
+    brk: {
+      now: (back) => `Lessons paused · back ${back}`,
+      soon: (a, b) => `Lessons paused from ${a} to ${b}`,
+      p: 'No lessons and no fee during the break. Your usual lessons start again after it.',
+    },
     move: {
       h: 'Move a lesson',
       banner: (d) => `Moving your lesson on ${d}`,
@@ -289,6 +294,11 @@ export const S = {
     noRequests: '还没有申请。',
     kinds: { reschedule: '改一堂课的时间', absence: '请假', change: '这堂和之后所有的课' },
     everyFrom: (day, time, from) => `每${day} ${time}${from ? `（${from}起）` : ''}`,
+    brk: {
+      now: (back) => `课程暂停中 · ${back}恢复`,
+      soon: (a, b) => `${a}至${b}暂停上课`,
+      p: '暂停期间不上课，也不收学费。之后会照常上课。',
+    },
     move: {
       h: '改上课时间',
       banner: (d) => `正在改 ${d} 的课`,
