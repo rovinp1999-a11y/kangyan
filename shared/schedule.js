@@ -20,7 +20,7 @@ export function occurrences(student, requests, from, to) {
   for (const l of student.lessons || []) {
     for (let d = from; d <= to; d = addDays(d, 1)) {
       if (!covers(l, d) || (student.start_date && d < student.start_date) || onBreak(student, d)) continue // on a break: no lesson
-      const r = done.find((x) => x.kind !== 'change' && x.lesson_date === d && (!x.from_lesson || x.from_lesson.start === l.start))
+      const r = done.find((x) => (x.kind === 'reschedule' || x.kind === 'absence') && x.lesson_date === d && (!x.from_lesson || x.from_lesson.start === l.start))
       const status = !r ? 'lesson' : r.kind === 'reschedule' ? 'moved' : r.by_tutor ? 'cancelled' : 'absent'
       out.push({ date: d, start: l.start, end: l.end, kind: kindOf(l, student), status, request: r || null })
     }

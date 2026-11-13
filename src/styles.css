@@ -1567,3 +1567,4 @@ button.stu-tile:focus-visible { outline: 3px solid var(--purple); outline-offset
 .brk__preview { font-size: .82rem; color: var(--ink-soft); padding: 8px 10px; border-radius: 10px; background: #FEF3C7; }
 .brk__chip { justify-self: start; display: inline-block; margin-top: 3px; font-size: .72rem; font-weight: 700; padding: 1px 8px; border-radius: 999px; background: #E9E6DE; color: var(--ink-soft); }
 .stu-news--break { background: #EEF2FF; border-color: var(--purple); }
+.stu-req__new { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }

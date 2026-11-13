@@ -130,7 +130,7 @@ async function clearOrphans(sql, student) {
   const weekly = student?.lessons || []
   const rows = await sql`
     SELECT id, from_lesson, to_char(lesson_date, 'YYYY-MM-DD') AS lesson_date FROM student_requests
-    WHERE student_id = ${student.id} AND kind <> 'change' AND status IN ('pending','approved') AND lesson_date >= (now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date`
+    WHERE student_id = ${student.id} AND kind IN ('reschedule','absence') AND status IN ('pending','approved') AND lesson_date >= (now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date`
   const gone = rows.filter((x) => x.from_lesson && x.lesson_date && !weekly.some((l) => l.start === x.from_lesson.start && covers(l, x.lesson_date))).map((x) => x.id)
   if (gone.length) await sql`UPDATE student_requests SET status = 'cancelled', decided_at = now(), reply = COALESCE(reply, 'Weekly time changed') WHERE id = ANY(${gone})`
   return gone.length
@@ -361,7 +361,7 @@ export default async function handler(req, res) {
       const byTutor = !(b.action === 'cancelLesson' && b.absent === true)
       const replyText = byTutor ? 'Changed by your tutor' : 'Marked absent by your tutor'
       // Reuse the request already on this lesson (a student's pending ask, or an earlier change) so there is only ever one.
-      const [existing] = await sql.query(`SELECT id FROM student_requests WHERE student_id = $1 AND lesson_date = $2::date AND kind <> 'change'
+      const [existing] = await sql.query(`SELECT id FROM student_requests WHERE student_id = $1 AND lesson_date = $2::date AND kind IN ('reschedule','absence')
           AND status IN ('pending','approved') AND (from_lesson IS NULL OR from_lesson->>'start' = $3) ORDER BY created_at DESC LIMIT 1`, [sid, b.lessonDate, lesson.start])
       let rid
       if (existing) {
@@ -435,7 +435,7 @@ export default async function handler(req, res) {
     }
 
     if (b.action === 'undo') {
-      const rows = await sql`UPDATE student_requests SET status = 'cancelled', decided_at = now() WHERE id = ${id} AND kind <> 'change' AND status IN ('pending','approved') RETURNING id`
+      const rows = await sql`UPDATE student_requests SET status = 'cancelled', decided_at = now() WHERE id = ${id} AND kind IN ('reschedule','absence') AND status IN ('pending','approved') RETURNING id`
       if (!rows.length) return fail(res, 409, 'Nothing to undo')
       const [request] = await sql.query(`SELECT ${REQUEST_COLUMNS} FROM student_requests r WHERE r.id = $1`, [id])
       return send(res, 200, { ok: true, request })
@@ -448,7 +448,7 @@ export default async function handler(req, res) {
       if (!cur || cur.status !== 'pending') return fail(res, 409, 'This request was already answered or withdrawn')
 
       // Accepting at another time (agreed on WhatsApp): replace the requested time first.
-      if (b.status === 'approved' && b.time && cur.kind !== 'absence') {
+      if (b.status === 'approved' && b.time && cur.kind !== 'absence' && cur.kind !== 'break') {
         const t = b.time
         if (!HHMM.test(t.start || '') || !HHMM.test(t.end || '') || t.start >= t.end) return fail(res, 400, 'Check the start and end time')
         let date = null
@@ -474,6 +474,14 @@ export default async function handler(req, res) {
         WHERE id = ${id} AND status = 'pending' RETURNING id, student_id, kind, to_slot_id, to_weekday, to_start, to_end, from_lesson, to_char(lesson_date, 'YYYY-MM-DD') AS lesson_date, to_char(to_date, 'YYYY-MM-DD') AS to_date`
       if (!rq) return fail(res, 409, 'This request was already answered or withdrawn')
       let student = null
+      if (b.status === 'approved' && rq.kind === 'break' && rq.lesson_date && rq.to_date) {
+        // An accepted break: lessons pause between the two dates (same as pausing from the profile).
+        const [st] = await sql`SELECT breaks FROM students WHERE id = ${rq.student_id}`
+        const breaks = [...(st?.breaks || []), { from: rq.lesson_date, until: rq.to_date, ...(cur.note ? { note: cur.note.slice(0, 120) } : {}) }]
+          .sort((p, q) => p.from.localeCompare(q.from))
+        await sql`UPDATE students SET breaks = ${JSON.stringify(breaks)}::jsonb WHERE id = ${rq.student_id}`
+        student = await getStudent(sql, rq.student_id)
+      }
       if (b.status === 'approved' && rq.kind === 'change' && rq.to_start) {
         // Swap the weekly lesson they asked about for the new time (or add it if they had none).
         const before = await getStudent(sql, rq.student_id)

@@ -10,7 +10,7 @@ import TimeSelect from '../components/TimeSelect.jsx'
 import { fill } from './templates.js'
 
 const SITE = 'https://kangyan.work/student'
-const KIND_LABEL = { reschedule: 'Move one lesson', absence: 'Absence', change: 'This and all following' }
+const KIND_LABEL = { reschedule: 'Move one lesson', absence: 'Absence', change: 'This and all following', break: 'Break' }
 const STATUS = { pending: 'Waiting', approved: 'Approved', rejected: 'Rejected', cancelled: 'Withdrawn' }
 const localPhone = (p) => (p?.startsWith('60') ? `0${p.slice(2)}` : p || '')
 const first = (n) => n.trim().split(/\s+/)[0]
@@ -52,6 +52,7 @@ function decisionMessage(r, s, approved) {
     reschedule: zh ? `${lesson} 的课改到 ${askedTime(r, lang)}` : `moving your lesson on ${lesson} to ${askedTime(r, lang)}`,
     absence: zh ? `${lesson} 请假${r.recording ? '（会发录影给你）' : ''}` : `your absence on ${lesson}${r.recording ? ' (I will send you the recording)' : ''}`,
     change: zh ? `这堂和之后所有的课改到${askedTime(r, lang)}` : `changing this and all following lessons to ${askedTime(r, lang)}`,
+    break: zh ? `${lesson}至${r.to_date ? dateLabel(r.to_date, lang) : ''}暂停上课（不收学费）` : `a break from ${lesson} to ${r.to_date ? dateLabel(r.to_date, lang) : ''} (no lessons and no fee)`,
   }[r.kind]
   return fill(approved ? 'accepted' : 'declined', lang, { name: zh ? s.name : first(s.name), what, reply: r.reply ? `\n\n${r.reply}` : '', link: SITE })
 }
@@ -60,6 +61,7 @@ export function requestText(r) {
   const at = r.from_lesson ? ` ${shortRange(r.from_lesson.start, r.from_lesson.end, 'en')}` : ''
   if (r.kind === 'reschedule') return `${dateLabel(r.lesson_date)}${at} → ${askedTime(r)}`
   if (r.kind === 'absence') return `${dateLabel(r.lesson_date)}${at}${r.recording ? ' · wants the recording' : ''}`
+  if (r.kind === 'break') return `No lessons ${dateLabel(r.lesson_date)} – ${dateLabel(r.to_date)}`
   return `${r.from_lesson ? `${WEEKDAYS_SHORT[r.from_lesson.weekday]}${at}` : 'New weekly lesson'} → ${askedTime(r)}`
 }
 
@@ -89,7 +91,7 @@ export function Decide({ r, onDecide, withReply = true }) {
       {withReply && <input className="sreq__reply" value={reply} onChange={(e) => setReply(e.target.value)} placeholder="Reply to the student (optional)" maxLength={500} aria-label="Reply to the student" />}
       <div className="sreq__acts">
         <button type="button" className="act" disabled={busy} onClick={() => go('rejected')}>Decline</button>
-        {r.kind !== 'absence' && !editing && <button type="button" className="act" disabled={busy} onClick={() => setEditing(true)}><Icon name="edit" />Change time</button>}
+        {r.kind !== 'absence' && r.kind !== 'break' && !editing && <button type="button" className="act" disabled={busy} onClick={() => setEditing(true)}><Icon name="edit" />Change time</button>}
         {editing
           ? <button type="button" className="btn btn--accent btn--sm" disabled={busy || !timesOk} onClick={() => go('approved', t)}>Accept new time</button>
           : <button type="button" className="btn btn--accent btn--sm" disabled={busy} onClick={() => go('approved')}>{r.kind === 'absence' ? 'Noted' : 'Accept'}</button>}

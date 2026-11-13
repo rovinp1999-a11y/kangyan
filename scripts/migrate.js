@@ -156,6 +156,9 @@ const statements = [
   `ALTER TABLE students ADD COLUMN IF NOT EXISTS parent_phone TEXT`,
   // Breaks: lessons paused from one date to another, [{ from, until, note }].
   `ALTER TABLE students ADD COLUMN IF NOT EXISTS breaks JSONB NOT NULL DEFAULT '[]'::jsonb`,
+  // Students can ask for a break: lesson_date = first day, to_date = last day.
+  `ALTER TABLE student_requests DROP CONSTRAINT IF EXISTS student_requests_kind_check`,
+  `ALTER TABLE student_requests ADD CONSTRAINT student_requests_kind_check CHECK (kind IN ('reschedule','absence','change','break'))`,
   // Each weekly lesson is 1-to-1 or group; a student with both is 'both'.
   `ALTER TABLE students DROP CONSTRAINT IF EXISTS students_lesson_type_check`,
   `ALTER TABLE students ADD CONSTRAINT students_lesson_type_check CHECK (lesson_type IN ('private','group','both'))`,

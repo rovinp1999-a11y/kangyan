@@ -128,6 +128,72 @@ function AbsenceSheet({ lesson, st, T, lang, token, onClose, onSent }) {
   )
 }
 
+const monthEnd = (d) => addDays(`${addDays(`${d.slice(0, 7)}-28`, 4).slice(0, 7)}-01`, -1)
+
+/** Bottom sheet for asking to pause lessons from one date to another (the tutor accepts or declines). */
+function BreakSheet({ st, T, lang, token, onClose, onSent }) {
+  const [from, setFrom] = useState(st.today)
+  const [until, setUntil] = useState(monthEnd(st.today))
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const ok = from && until && until >= from
+  // Lessons that the break would take out, as a preview.
+  const missed = st.lessons.filter((l) => l.date >= from && l.date <= until).length
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = prev }
+  }, [onClose])
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!ok) return
+    setBusy(true)
+    setErr('')
+    try {
+      await call(token, { action: 'request', kind: 'break', from, until, note })
+      onSent()
+    } catch (e2) {
+      setErr(T.errors[e2.code] || T.errors.server)
+      if (e2.code === 'auth') onClose('auth')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="stu-sheet" role="dialog" aria-modal="true" aria-label={T.brk.h}>
+      <div className="stu-sheet__bg" onClick={() => onClose()} />
+      <form className="stu-sheet__panel" onSubmit={submit}>
+        <h2>{T.brk.h}</h2>
+        <p className="stu-muted">{T.brk.sheetP}</p>
+        <div className="stu-move__times">
+          <label className="stu-field"><span>{T.brk.first}</span>
+            <input type="date" value={from} min={st.today} onChange={(e) => { setFrom(e.target.value); if (until < e.target.value) setUntil(e.target.value) }} required />
+          </label>
+          <label className="stu-field"><span>{T.brk.last}</span>
+            <input type="date" value={until} min={from} onChange={(e) => setUntil(e.target.value)} required />
+          </label>
+        </div>
+        {ok && <p className="stu-note">{T.brk.preview(dateLabel(from, lang), dateLabel(until, lang), missed)}</p>}
+        <label className="stu-field">
+          <span>{T.brk.why}</span>
+          <textarea rows={2} maxLength={500} placeholder={T.brk.whyPh} value={note} onChange={(e) => setNote(e.target.value)} />
+        </label>
+        {err && <p className="stu-err" role="alert">{err}</p>}
+        <div className="stu-sheet__acts">
+          <button type="button" className="btn btn--ghost" onClick={() => onClose()}>{T.sheet.cancel}</button>
+          <button className="btn btn--accent" disabled={!ok || busy}>{busy ? T.sheet.sending : T.brk.send}</button>
+        </div>
+      </form>
+    </div>
+  )
+}
+
 /** Which calendar week (0 = this one) a date falls in. */
 const weekOf = (today, date) => Math.floor(daysBetween(addDays(today, -weekdayOf(today)), date) / 7)
 
@@ -572,6 +638,7 @@ function Home({ st, T, L, lang, token, notify, go, onSheet }) {
           <span className="stu-k">{H.quick}</span>
           <button type="button" className="act" onClick={() => go('calendar')}><Icon name="calendar" />{H.seeCal}</button>
           {st.weekly.length > 0 && <button type="button" className="act" onClick={() => onSheet({ kind: 'change' })}><Icon name="repeat" />{T.changeBtn}</button>}
+          {st.lessons.some((l) => l.hours > 0) && <button type="button" className="act" onClick={() => onSheet({ kind: 'break' })}><Icon name="clock" />{T.brk.ask}</button>}
           <CalendarLink T={T} token={st.calendarToken} notify={notify} />
         </section>
       </div>
@@ -690,7 +757,7 @@ export default function StudentPage() {
 
   // Absences use the sheet; moving a lesson (one, or a new regular time) happens on the calendar.
   const openRequest = (x) => {
-    if (x.kind === 'absence') return setSheet(x)
+    if (x.kind === 'absence' || x.kind === 'break') return setSheet(x)
     const movable = st.lessons.filter((l) => !l.request && startsAt(l.date, l.start) > Date.now())
     const lesson = x.lesson || (x.kind === 'change' ? movable.find((l) => !l.once) : movable.find((l) => l.hours >= NOTICE_HOURS) || movable[0])
     if (!lesson) return notify(T.sheet.noneMovable)
@@ -780,6 +847,10 @@ export default function StudentPage() {
 
   const requestList = st && (
     <section className="stu-card">
+      <div className="stu-req__new">
+        <button type="button" className="act" onClick={() => go('calendar')}><Icon name="calendar" />{T.brk.moveOrAbsent}</button>
+        <button type="button" className="act" onClick={() => setSheet({ kind: 'break' })}><Icon name="clock" />{T.brk.ask}</button>
+      </div>
       {st.requests.length ? (
         <ul className="stu-reqs">
           {st.requests.map((r) => (
@@ -789,9 +860,10 @@ export default function StudentPage() {
                 <span className={`stu-chip stu-chip--${r.status}`}>{T.reqStatus[r.status]}</span>
               </div>
               <p>
-                {r.lesson_date && T.lessonOn(`${dateLabel(r.lesson_date, lang)}${r.from_lesson ? ` ${shortRange(r.from_lesson.start, r.from_lesson.end, lang)}` : ''}`)}
+                {r.kind === 'break' && T.brk.range(dateLabel(r.lesson_date, lang), dateLabel(r.to_date, lang))}
+                {r.kind !== 'break' && r.lesson_date && T.lessonOn(`${dateLabel(r.lesson_date, lang)}${r.from_lesson ? ` ${shortRange(r.from_lesson.start, r.from_lesson.end, lang)}` : ''}`)}
                 {!r.lesson_date && r.from_lesson && `${L.weekdays[r.from_lesson.weekday]} ${shortRange(r.from_lesson.start, r.from_lesson.end, lang)}`}
-                {(r.to_start || r.to_label) && <> {T.to(timeOf(r))}</>}
+                {r.kind !== 'break' && (r.to_start || r.to_label) && <> {T.to(timeOf(r))}</>}
                 {r.recording && <> · {T.recordingAsked}</>}
               </p>
               {r.note && <p className="stu-muted">“{r.note}”</p>}
@@ -869,7 +941,14 @@ export default function StudentPage() {
         </main>
       </div>
 
-      {sheet && st && (
+      {sheet?.kind === 'break' && st && (
+        <BreakSheet
+          st={st} T={T} lang={lang} token={token}
+          onClose={(why) => { setSheet(null); if (why === 'auth') logout() }}
+          onSent={() => { setSheet(null); notify(T.sheet.sent); load() }}
+        />
+      )}
+      {sheet && sheet.kind !== 'break' && st && (
         <AbsenceSheet
           lesson={sheet.lesson}
           st={st} T={T} lang={lang} token={token}

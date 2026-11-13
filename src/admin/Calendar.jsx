@@ -21,7 +21,7 @@ function peopleFor(date, match, students, requests) {
   for (const s of students) {
     if (!s.active || (s.start_date && date < s.start_date) || onBreak(s, date)) continue // on a break: not in the calendar
     for (const l of (s.lessons || []).filter((x) => match(x) && covers(x, date))) {
-      const r = requests.find((x) => x.student_id === s.id && x.lesson_date === date && x.kind !== 'change' && ACTIVE.includes(x.status) && (!x.from_lesson || x.from_lesson.start === l.start))
+      const r = requests.find((x) => x.student_id === s.id && x.lesson_date === date && (x.kind === 'reschedule' || x.kind === 'absence') && ACTIVE.includes(x.status) && (!x.from_lesson || x.from_lesson.start === l.start))
       const state = !r ? 'regular' : r.kind === 'absence' ? (r.status === 'approved' ? 'absent' : 'absentAsk') : (r.status === 'approved' ? 'movedOut' : 'moveOutAsk')
       out.push({ s, l, r, state, kind: kindOf(l, s) })
     }

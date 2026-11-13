@@ -70,7 +70,7 @@ async function occupied(sql, me, dates) {
     for (const l of o.lessons || []) {
       for (const date of dates) {
         if (!covers(l, date) || (o.start_day && date < o.start_day) || onBreak(o, date)) continue // on a break: that time is free
-        const gone = reqs.some((r) => r.student_id === o.id && r.status === 'approved' && r.kind !== 'change' && r.lesson_date === date && (!r.from_lesson || r.from_lesson.start === l.start))
+        const gone = reqs.some((r) => r.student_id === o.id && r.status === 'approved' && (r.kind === 'reschedule' || r.kind === 'absence') && r.lesson_date === date && (!r.from_lesson || r.from_lesson.start === l.start))
         if (!gone) out.push({ date, start: l.start, end: l.end })
       }
     }
@@ -140,7 +140,7 @@ async function state(sql, s) {
     .filter((o) => !o.movedFrom)
     .map((o) => {
       const w = (s.lessons || []).find((l) => l.start === o.start && covers(l, o.date))
-      const r = requests.find((x) => x.lesson_date === o.date && x.kind !== 'change' && ACTIVE.includes(x.status) && (!x.from_lesson || x.from_lesson.start === o.start))
+      const r = requests.find((x) => x.lesson_date === o.date && (x.kind === 'reschedule' || x.kind === 'absence') && ACTIVE.includes(x.status) && (!x.from_lesson || x.from_lesson.start === o.start))
       return { date: o.date, weekday: weekdayOf(o.date), start: o.start, end: o.end, kind: o.kind, once: !!w?.once, hours: hoursUntil(o.date, o.start), request: r || null }
     })
 
@@ -211,8 +211,27 @@ async function saveProfile(res, sql, s, b) {
   return send(res, 200, { ok: true, profile: after })
 }
 
+/** A student asks to pause their lessons from one date to another; the tutor accepts or declines. */
+async function requestBreak(res, sql, s, b) {
+  const today = todayMY()
+  const from = b.from
+  const until = b.until
+  if (!isDate(from) || !isDate(until) || from < today || until < from || until > addDays(today, 366)) return fail(res, 400, 'Pick the first and last day of the break', 'breakDates')
+  const [dup] = await sql`SELECT id FROM student_requests WHERE student_id = ${s.id} AND kind = 'break' AND status = 'pending'`
+  if (dup) return fail(res, 409, 'You already asked for a break', 'duplicate')
+  const note = str(b.note, 500)
+  const label = `${dateLabel(from)} – ${dateLabel(until)}`
+  const [row] = await sql`
+    INSERT INTO student_requests (student_id, kind, lesson_date, to_date, to_label, note)
+    VALUES (${s.id}, 'break', ${from}, ${until}, ${label}, ${note || null}) RETURNING id`
+  await notify(`Kangyan: ${s.name} — break request`,
+    `${s.name} (${s.level || ''}) would like a break from ${label}.${note ? `\nReason: ${note}` : ''}\n\nAccept or decline: https://kangyan.work/admin`)
+  return send(res, 201, { ok: true, id: row.id })
+}
+
 async function createRequest(res, sql, s, b) {
   const kind = b.kind
+  if (kind === 'break') return requestBreak(res, sql, s, b)
   if (!['reschedule', 'absence', 'change'].includes(kind)) return fail(res, 400, 'Invalid request', 'invalid')
   const st = await state(sql, s)
   st.lessons = st.lessons.filter((l) => l.hours > 0) // only lessons still to come can be changed
