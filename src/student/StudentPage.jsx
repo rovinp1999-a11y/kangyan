@@ -316,8 +316,11 @@ function studentWeek(st, week, T, L, lang, move) {
     const events = []
     for (const l of st.lessons.filter((x) => x.date === date)) {
       const r = l.request
-      const tone = !r ? 'mine' : r.status === 'pending' ? 'pending' : r.kind === 'absence' ? 'off' : 'moved'
-      const label = tone === 'off' && r.by_tutor ? T.cal.tone.cancelled : T.cal.tone[tone]
+      // Cancelled, absent or moved away (approved): leave the time empty, like the tutor's calendar.
+      // A moved lesson shows at its new time instead; requests still waiting stay visible.
+      if (r?.status === 'approved') continue
+      const tone = r ? 'pending' : 'mine'
+      const label = T.cal.tone[tone]
       events.push({ key: `m-${date}-${l.start}`, start: l.start, end: l.end, tone, dot: true, title: T.cal.mine, sub: r ? `${shortRange(l.start, l.end, lang)} · ${label}` : shortRange(l.start, l.end, lang), info: { type: 'mine', lesson: l } })
     }
     for (const r of st.requests.filter((x) => x.kind === 'reschedule' && ACTIVE.includes(x.status) && x.to_date === date)) {
