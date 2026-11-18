@@ -1,5 +1,5 @@
 // Student page API (existing students, logged in with WhatsApp number + PIN).
-//   POST { action: 'login', phone, pin }   → { token }
+//   POST { action: 'login', phone, pin, remember? } → { token } (remember: 90 days, else 12 hours)
 //   GET                                    → profile, upcoming lessons, requests, times on offer
 //   POST { action: 'request', kind, ... }  → ask to move one lesson, report an absence or change the regular time
 //   POST { action: 'cancel', id }          → withdraw a pending request
@@ -48,7 +48,7 @@ async function login(req, res, sql, b) {
   }
   await sql`DELETE FROM admin_login_attempts WHERE ip = ANY(${keys})`
   await sql`UPDATE students SET last_login = now() WHERE id = ${s.id}`
-  return send(res, 200, { ok: true, token: issueStudentToken(s) })
+  return send(res, 200, { ok: true, token: issueStudentToken(s, b.remember === true) })
 }
 
 const sameLesson = (a, b) => a && b && a.weekday === b.weekday && a.start === b.start
@@ -329,7 +329,7 @@ export default async function handler(req, res) {
       const sibs = await sql`SELECT pin_hash FROM students WHERE phone = ${s.phone} AND id <> ${s.id}`
       if (sibs.some((x) => checkPin(b.next, x.pin_hash))) return fail(res, 409, 'Choose a different PIN', 'pinTaken')
       const [u] = await sql`UPDATE students SET pin_hash = ${hashPin(b.next)}, pin_enc = ${encryptPin(b.next)} WHERE id = ${s.id} RETURNING *`
-      return send(res, 200, { ok: true, token: issueStudentToken(u) })
+      return send(res, 200, { ok: true, token: issueStudentToken(u, b.remember === true) })
     }
     if (b.action === 'profile') return await saveProfile(res, sql, s, b)
     return fail(res, 400, 'Unknown action', 'invalid')

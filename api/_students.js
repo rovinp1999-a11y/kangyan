@@ -3,7 +3,8 @@ import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, 
 import { getSql } from './_db.js'
 import { fail } from './_http.js'
 
-const TTL_MS = 30 * 24 * 60 * 60 * 1000 // 30 days: parents shouldn't have to log in every week
+const TTL_MS = 12 * 60 * 60 * 1000 // 12 hours without "Remember me"
+const REMEMBER_MS = 90 * 24 * 60 * 60 * 1000 // 90 days: parents shouldn't have to log in again
 
 /** Malaysian numbers in one form: digits only, leading 0 → 60, 00 prefix dropped. */
 export function normalPhone(v) {
@@ -68,8 +69,8 @@ function secret() {
 // The token carries part of the PIN hash, so a new PIN logs out old sessions.
 const sign = (id, exp, pinHash) => createHmac('sha256', secret()).update(`${id}.${exp}.${pinHash.slice(-16)}`).digest('hex')
 
-export function issueStudentToken(student) {
-  const exp = Date.now() + TTL_MS
+export function issueStudentToken(student, remember = false) {
+  const exp = Date.now() + (remember ? REMEMBER_MS : TTL_MS)
   return `${student.id}.${exp}.${sign(student.id, exp, student.pin_hash)}`
 }
 

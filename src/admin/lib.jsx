@@ -9,8 +9,16 @@ import { fill } from './templates.js'
 /* ------------------------------------------------------------------ */
 
 export const KEY = 'kangyan-admin-token'
-export const getToken = () => { try { return sessionStorage.getItem(KEY) || '' } catch { return '' } }
-export const setToken = (t) => { try { t ? sessionStorage.setItem(KEY, t) : sessionStorage.removeItem(KEY) } catch { /* ignore */ } }
+// "Remember me" keeps the token in localStorage (survives closing the app); otherwise sessionStorage.
+export const getToken = () => { try { return localStorage.getItem(KEY) || sessionStorage.getItem(KEY) || '' } catch { return '' } }
+export const isRemembered = () => { try { return !!localStorage.getItem(KEY) } catch { return false } }
+/** Save or clear the token. Without `remember`, a new token stays where the old one was. */
+export const setToken = (t, remember = isRemembered()) => {
+  try {
+    localStorage.removeItem(KEY); sessionStorage.removeItem(KEY)
+    if (t) (remember ? localStorage : sessionStorage).setItem(KEY, t)
+  } catch { /* ignore */ }
+}
 
 export async function api(path, { method = 'GET', body } = {}) {
   const res = await fetch(path, {

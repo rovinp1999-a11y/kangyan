@@ -12,8 +12,15 @@ import TimeSelect from '../components/TimeSelect.jsx'
 const KEY = 'kangyan-student-token'
 const TAB_KEY = 'kangyan-student-tab'
 const TABS = ['home', 'calendar', 'history', 'requests', 'profile']
-const getTok = () => { try { return localStorage.getItem(KEY) || '' } catch { return '' } }
-const setTok = (t) => { try { t ? localStorage.setItem(KEY, t) : localStorage.removeItem(KEY) } catch { /* ignore */ } }
+// "Remember me" keeps the login in localStorage; otherwise it ends when the browser closes.
+const getTok = () => { try { return localStorage.getItem(KEY) || sessionStorage.getItem(KEY) || '' } catch { return '' } }
+const remembered = () => { try { return !!localStorage.getItem(KEY) } catch { return false } }
+const setTok = (t, remember = remembered()) => {
+  try {
+    localStorage.removeItem(KEY); sessionStorage.removeItem(KEY)
+    if (t) (remember ? localStorage : sessionStorage).setItem(KEY, t)
+  } catch { /* ignore */ }
+}
 
 async function call(token, body) {
   const headers = { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(body ? { 'Content-Type': 'application/json' } : {}) }
@@ -26,6 +33,7 @@ async function call(token, body) {
 function Login({ T, onToken }) {
   const [phone, setPhone] = useState('')
   const [pin, setPin] = useState('')
+  const [remember, setRemember] = useState(true)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const submit = async (e) => {
@@ -33,8 +41,8 @@ function Login({ T, onToken }) {
     setBusy(true)
     setErr('')
     try {
-      const { token } = await call('', { action: 'login', phone, pin })
-      onToken(token)
+      const { token } = await call('', { action: 'login', phone, pin, remember })
+      onToken(token, remember)
     } catch (e2) {
       setErr(T.errors[e2.code] || T.errors.server)
     } finally {
@@ -52,6 +60,10 @@ function Login({ T, onToken }) {
       <label className="stu-field">
         <span>{T.login.pin}</span>
         <input type="password" inputMode="numeric" autoComplete="current-password" pattern="[0-9]{6}" maxLength={6} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))} required />
+      </label>
+      <label className="remember">
+        <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+        <span>{T.login.remember}</span>
       </label>
       {err && <p className="stu-err" role="alert">{err}</p>}
       <button className="btn btn--accent btn--full" disabled={busy}>{busy ? T.login.busy : T.login.go}</button>
@@ -659,7 +671,7 @@ function PinForm({ T, token, onToken, notify, open, setOpen }) {
     setBusy(true)
     setErr('')
     try {
-      const { token: t } = await call(token, { action: 'pin', current: cur, next })
+      const { token: t } = await call(token, { action: 'pin', current: cur, next, remember: remembered() })
       onToken(t)
       setCur('')
       setNext('')
@@ -717,7 +729,7 @@ export default function StudentPage() {
     setToast({ text, id: Date.now() })
     setTimeout(() => setToast((x) => (x && Date.now() - x.id >= 2500 ? null : x)), 2700)
   }, [])
-  const saveToken = useCallback((t) => { setTok(t); setToken(t) }, [])
+  const saveToken = useCallback((t, remember) => { setTok(t, remember); setToken(t) }, [])
   const logout = useCallback(() => { saveToken(''); setSt(null) }, [saveToken])
 
   const load = useCallback(async () => {

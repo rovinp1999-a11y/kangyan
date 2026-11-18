@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { WEEKDAYS_SHORT, formatRange, slotLabel } from '../../shared/constants.js'
-import { Icon, STATUS_META, api, getToken, setToken, sortSlots } from './lib.jsx'
+import { Icon, STATUS_META, api, getToken, isRemembered, setToken, sortSlots } from './lib.jsx'
 import { EnquiriesTab, EnquiryCard, EnquiryForm, Drawer } from './Enquiries.jsx'
 import { SlotsTab } from './Timetable.jsx'
 import { AdminCalendar } from './Calendar.jsx'
@@ -52,7 +52,7 @@ function PasswordForm({ onDone, onCancel, notify }) {
     setBusy(true)
     setErr('')
     try {
-      const { token } = await api('/api/admin/login', { method: 'POST', body: { action: 'change', current: cur, next } })
+      const { token } = await api('/api/admin/login', { method: 'POST', body: { action: 'change', current: cur, next, remember: isRemembered() } })
       setToken(token)
       notify('Password changed. Other devices are logged out.')
       onDone()
@@ -80,6 +80,7 @@ function PasswordForm({ onDone, onCancel, notify }) {
 
 function Login({ onDone }) {
   const [password, setPassword] = useState('')
+  const [remember, setRemember] = useState(true)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
 
@@ -89,11 +90,11 @@ function Login({ onDone }) {
     setErr('')
     try {
       const res = await fetch('/api/admin/login', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password, remember }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok || !data.ok) throw new Error(data.error || 'Login failed')
-      setToken(data.token)
+      setToken(data.token, remember)
       onDone()
     } catch (e2) {
       setErr(e2.message)
@@ -110,6 +111,10 @@ function Login({ onDone }) {
         <label htmlFor="pw">Password</label>
         <input id="pw" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} autoFocus required />
       </div>
+      <label className="remember">
+        <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+        <span>Remember me on this device for 30 days</span>
+      </label>
       <button className="btn btn--accent btn--full" disabled={busy}>{busy ? 'Checking…' : 'Log in'}</button>
       {err && <p className="form__note is-error">{err}</p>}
     </form>

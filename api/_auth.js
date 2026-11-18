@@ -7,6 +7,7 @@ import { getSql } from './_db.js'
 import { fail } from './_http.js'
 
 const TTL_MS = 12 * 60 * 60 * 1000 // 12 hours
+const REMEMBER_MS = 30 * 24 * 60 * 60 * 1000 // "Remember me": 30 days on that device
 const KEY = 'admin_password'
 
 function envPassword() {
@@ -54,8 +55,8 @@ export async function setPassword(next) {
   cache = { at: Date.now(), hash: value }
 }
 
-export async function issueToken() {
-  const exp = Date.now() + TTL_MS
+export async function issueToken(remember = false) {
+  const exp = Date.now() + (remember ? REMEMBER_MS : TTL_MS)
   return { token: `${exp}.${await sign(exp)}`, expiresAt: exp }
 }
 

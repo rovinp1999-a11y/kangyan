@@ -1,4 +1,4 @@
-// POST /api/admin/login { password }                     → { token, expiresAt }
+// POST /api/admin/login { password, remember? }          → { token, expiresAt } (remember: 30 days, else 12 hours)
 // POST /api/admin/login { action: 'change', current, next } → new password (logged in only) → { token }
 // Failed attempts are counted per IP; after MAX_FAILS in WINDOW the IP must wait.
 import { checkPassword, issueToken, requireAdmin, setPassword } from '../_auth.js'
@@ -38,7 +38,7 @@ export default async function handler(req, res) {
       if (next.length > 200) return fail(res, 400, 'That password is too long')
       await setPassword(next)
       // Signing changed, so every other device is logged out; this one gets a fresh token.
-      return send(res, 200, { ok: true, ...(await issueToken()) })
+      return send(res, 200, { ok: true, ...(await issueToken(body.remember === true)) })
     }
 
     if (!(await checkPassword(password))) {
@@ -46,7 +46,7 @@ export default async function handler(req, res) {
       return fail(res, 401, 'Wrong password')
     }
     await sql`DELETE FROM admin_login_attempts WHERE ip = ${ip} OR at < now() - interval '1 day'`
-    return send(res, 200, { ok: true, ...(await issueToken()) })
+    return send(res, 200, { ok: true, ...(await issueToken(body.remember === true)) })
   } catch (err) {
     console.error('[api/admin/login]', err)
     return fail(res, 500, 'Login is unavailable right now')

@@ -1568,3 +1568,7 @@ button.stu-tile:focus-visible { outline: 3px solid var(--purple); outline-offset
 .brk__chip { justify-self: start; display: inline-block; margin-top: 3px; font-size: .72rem; font-weight: 700; padding: 1px 8px; border-radius: 999px; background: #E9E6DE; color: var(--ink-soft); }
 .stu-news--break { background: #EEF2FF; border-color: var(--purple); }
 .stu-req__new { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+
+/* "Remember me" on the admin and student logins */
+.remember { display: flex; align-items: center; gap: 10px; margin: 4px 0 16px; font-size: 0.95rem; color: var(--muted); cursor: pointer; user-select: none; }
+.remember input { width: 18px; height: 18px; margin: 0; accent-color: var(--purple); flex: none; cursor: pointer; }
